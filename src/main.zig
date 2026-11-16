@@ -9,7 +9,7 @@ const known_folders = @import("known-folders");
 const log = std.log.scoped(.main);
 
 const usage =
-    \\ZLS - A non-official language server for Zig
+    \\XZLS - A non-official language server for Zig.
     \\
     \\Commands:
     \\  help, --help,             Print this help and exit
@@ -509,9 +509,8 @@ fn parseArgs(
     }
 
     if (zig_builtin.target.os.tag != .wasi and try std.Io.File.stdin().isTty(io)) {
-        log.warn("ZLS is not a CLI tool, it communicates over the Language Server Protocol.", .{});
-        log.warn("Did you mean to run 'zls --help'?", .{});
-        log.warn("", .{});
+        log.warn("XZLS isn't a CLI tool, it's a Language Server Protocol server.", .{});
+        log.warn("Did you mean to run 'xzls --help'?", .{});
     }
 
     return result;
@@ -580,7 +579,10 @@ pub fn main(init: std.process.Init.Minimal) !u8 {
         log_stderr = true;
     }
 
-    log.info("Starting ZLS      {s} @ '{s}'", .{ zls.build_options.version_string, result.zls_exe_path });
+    log.info("Starting XZLS      {s} @ '{s}'", .{
+        zls.build_options.version_string,
+        result.zls_exe_path,
+    });
     if (log_file_path) |path| {
         log.info("Log File:         {s} ({t})", .{ path, log_level });
     } else {
