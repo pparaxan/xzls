@@ -331,7 +331,7 @@ fn gotoHandler(
         .comment => {
             const link_info = Analyser.getDocCommentLinkAt(handle.tree.source, source_index) orelse return null;
             const target_decl = (try analyser.resolveDocCommentLinkWithFile(arena, handle, source_index, link_info.target, link_info.file_path)) orelse return null;
-            const target_range = if (target_decl.decl == .ast_node and target_decl.decl.ast_node == @as(std.zig.Ast.Node.Index, @enumFromInt(0)))
+            const target_range = if (target_decl.decl == .ast_node and target_decl.decl.ast_node == @as(std.zig.Ast.Node.Index, @fromBackingInt(@intCast(0))))
                 types.Range{ .start = .{ .line = 0, .character = 0 }, .end = .{ .line = 0, .character = 0 } }
             else
                 offsets.tokenToRange(&target_decl.handle.tree, target_decl.nameToken(), server.offset_encoding);
