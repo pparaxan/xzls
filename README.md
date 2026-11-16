@@ -1,8 +1,8 @@
 <div align="center">
 <img src=".github/logo.svg" width=512>
 
-<b>THIS PROJECT IS AI SLOP!!!<br>MOST COMMITS HERE ARE GENERATED VIA LLM. DO NOT INSTALL IF YOU DON'T
-SUPPORT WHAT XZLS IS DOING.</b>
+<b>THIS PROJECT IS AI SLOP!!!<br>MOST COMMITS HERE ARE GENERATED VIA LLMs. DO NOT INSTALL IF YOU
+DON'T SUPPORT WHAT XZLS IS DOING.</b>
 <br>
 <sub>Because of this, this project isn't allowed on Codeberg.</sub>
 
