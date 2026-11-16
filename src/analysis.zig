@@ -6825,7 +6825,7 @@ pub fn resolveDocCommentLinkWithFile(
             .none => return null,
         };
         const target_handle = analyser.store.getHandle(uri) orelse return null;
-        const file_root_decl = DeclWithHandle{ .decl = .{ .ast_node = @as(Ast.Node.Index, @enumFromInt(0)) }, .handle = target_handle };
+        const file_root_decl = DeclWithHandle{ .decl = .{ .ast_node = @as(Ast.Node.Index, @fromBackingInt(@intCast(0))) }, .handle = target_handle };
 
         if (trimmed_query.len == 0) {
             return file_root_decl;
@@ -6897,7 +6897,7 @@ pub fn resolveDocCommentLinkWithFile(
             .none => return null,
         };
         const target_handle = analyser.store.getHandle(uri) orelse return null;
-        var curr_decl: DeclWithHandle = .{ .decl = .{ .ast_node = @as(Ast.Node.Index, @enumFromInt(0)) }, .handle = target_handle };
+        var curr_decl: DeclWithHandle = .{ .decl = .{ .ast_node = @as(Ast.Node.Index, @fromBackingInt(@intCast(0))) }, .handle = target_handle };
 
         const remainder = after_quote[quote_end + 2 ..];
         if (remainder.len > 1 and remainder[0] == '.') {
@@ -6941,7 +6941,7 @@ pub fn resolveDocCommentLinkWithFile(
             .none => break :blk null,
         };
         const target_handle = analyser.store.getHandle(uri) orelse break :blk null;
-        break :blk DeclWithHandle{ .decl = .{ .ast_node = @as(Ast.Node.Index, @enumFromInt(0)) }, .handle = target_handle };
+        break :blk DeclWithHandle{ .decl = .{ .ast_node = @as(Ast.Node.Index, @fromBackingInt(@intCast(0))) }, .handle = target_handle };
     } orelse return null;
 
     while (it.next()) |member| {
