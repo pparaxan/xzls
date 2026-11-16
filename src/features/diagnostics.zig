@@ -668,7 +668,6 @@ fn isExplicitAllocatorType(analyser: *Analyser, ty: Analyser.Type) bool {
         std.mem.eql(u8, rendered_str, "Allocator");
 }
 
-
 pub fn collectResourceDiagnostics(
     analyser: *Analyser,
     handle: *DocumentStore.Handle,
