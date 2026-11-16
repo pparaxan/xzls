@@ -224,28 +224,6 @@ fn typeToCompletion(builder: *Builder, ty: Analyser.Type) Analyser.Error!void {
     }
 }
 
-fn createAutoImportEdit(builder: *Builder, decl_handle: Analyser.DeclWithHandle) ?types.TextEdit {
-    if (!builder.server.config_manager.config.auto_import_on_completion) return null;
-    if (decl_handle.handle.uri.eql(builder.orig_handle.uri)) return null;
-
-    const target_fs = decl_handle.handle.uri.toFsPath(builder.arena) catch return null;
-    const orig_fs = builder.orig_handle.uri.toFsPath(builder.arena) catch return null;
-
-    const orig_dir = std.fs.path.dirname(orig_fs) orelse return null;
-    const rel = std.fs.path.relativeAlloc(builder.arena, "", null, orig_dir, target_fs) catch return null;
-
-    const symbol_name = offsets.identifierTokenToNameSlice(&decl_handle.handle.tree, decl_handle.nameToken());
-
-    const import_stmt = std.fmt.allocPrint(builder.arena, "const {s} = @import(\"{s}\");\n", .{ symbol_name, rel }) catch return null;
-    return types.TextEdit{
-        .range = .{
-            .start = .{ .line = 0, .character = 0 },
-            .end = .{ .line = 0, .character = 0 },
-        },
-        .newText = import_stmt,
-    };
-}
-
 fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle) Analyser.Error!void {
     const name = decl_handle.handle.tree.tokenSlice(decl_handle.nameToken());
 
@@ -325,9 +303,6 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle) Ana
                 if (try builder.analyser.resolveFuncProtoOfCallable(ty)) |func_ty| blk: {
                     var item = try functionTypeCompletion(builder, name, decl_handle.container_type, func_ty) orelse break :blk;
                     item.documentation = documentation;
-                    if (createAutoImportEdit(builder, decl_handle)) |edit| {
-                        item.additionalTextEdits = builder.arena.dupe(types.TextEdit, &.{edit}) catch null;
-                    }
                     builder.completions.appendAssumeCapacity(item);
                     return;
                 } else if (ty.isEnumType()) {
@@ -362,7 +337,7 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle) Ana
                 break :blk .{ .description = detail };
             };
 
-            var item: types.completion.Item = .{
+            const item: types.completion.Item = .{
                 .label = name,
                 .kind = kind,
                 .documentation = if (compile_error_message) |message| .{
@@ -376,9 +351,6 @@ fn declToCompletion(builder: *Builder, decl_handle: Analyser.DeclWithHandle) Ana
                 .deprecated = if (compile_error_message != null and builder.server.client_capabilities.supports_completion_deprecated_old) true else null,
                 .tags = if (compile_error_message != null and builder.server.client_capabilities.supports_completion_deprecated_tag) &.{.Deprecated} else null,
             };
-            if (createAutoImportEdit(builder, decl_handle)) |edit| {
-                item.additionalTextEdits = builder.arena.dupe(types.TextEdit, &.{edit}) catch null;
-            }
             builder.completions.appendAssumeCapacity(item);
         },
         .label => {
@@ -2013,7 +1985,7 @@ fn collectContainerFields(
 
                     if (is_enum) {
                         break :insert_text .{
-                            try builder.arena.print("{f} = .$0,", .{ Analyser.fmtEscapedSnippet(name) }),
+                            try builder.arena.print("{f} = .$0,", .{Analyser.fmtEscapedSnippet(name)}),
                             .Snippet,
                         };
                     } else if (default_val) |val| {
@@ -2023,7 +1995,7 @@ fn collectContainerFields(
                         };
                     } else {
                         break :insert_text .{
-                            try builder.arena.print("{f} = $0,", .{ Analyser.fmtEscapedSnippet(name) }),
+                            try builder.arena.print("{f} = $0,", .{Analyser.fmtEscapedSnippet(name)}),
                             .Snippet,
                         };
                     }
