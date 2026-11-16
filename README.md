@@ -1,5 +1,5 @@
 <div align="center">
-<img src=".forgejo/assets/logo.svg" width=512>
+<img src=".github/logo.svg" width=512>
 
 <b>THIS PROJECT IS AI SLOP!!!<br>MOST COMMITS HERE ARE GENERATED VIA LLM. DO NOT INSTALL IF YOU DON'T
 SUPPORT WHAT XZLS IS DOING.</b>
