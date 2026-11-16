@@ -252,7 +252,7 @@ fn formatDocLinks(
 
                 if (clean.len > 0 or file_path != null) {
                     if (analyser.resolveDocCommentLinkWithFile(arena, handle, comment_pos, clean, file_path) catch null) |target_decl| {
-                        const target_line = if (target_decl.decl == .ast_node and target_decl.decl.ast_node == @as(Ast.Node.Index, @enumFromInt(0)))
+                        const target_line = if (target_decl.decl == .ast_node and target_decl.decl.ast_node == @as(Ast.Node.Index, @fromBackingInt(@intCast(0))))
                             @as(u32, 1)
                         else
                             offsets.tokenToPosition(&target_decl.handle.tree, target_decl.nameToken(), .@"utf-8").line + 1;
