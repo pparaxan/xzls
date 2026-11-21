@@ -147,7 +147,7 @@ pub const Builder = struct {
     pub fn generateCodeActionsInRange(
         builder: *Builder,
         range: types.Range,
-    ) error{OutOfMemory}!void {
+    ) Analyser.Error!void {
         const tracy_zone = tracy.trace(@src());
         defer tracy_zone.end();
 
@@ -156,21 +156,23 @@ pub const Builder = struct {
         const source_index = offsets.positionToIndex(tree.source, range.start, builder.offset_encoding);
 
         const ctx = try Analyser.getPositionContext(builder.arena, tree, source_index, true);
-        if (ctx != .string_literal) return;
+        if (ctx == .string_literal) {
+            var token_idx = offsets.sourceIndexToTokenIndex(tree, source_index).pickPreferred(&.{ .string_literal, .multiline_string_literal_line }, tree) orelse return;
 
-        var token_idx = offsets.sourceIndexToTokenIndex(tree, source_index).pickPreferred(&.{ .string_literal, .multiline_string_literal_line }, tree) orelse return;
+            // if `offsets.sourceIndexToTokenIndex` is called with a source index between two tokens, it will be the token to the right.
+            switch (tree.tokenTag(token_idx)) {
+                .string_literal, .multiline_string_literal_line => {},
+                else => token_idx -|= 1,
+            }
 
-        // if `offsets.sourceIndexToTokenIndex` is called with a source index between two tokens, it will be the token to the right.
-        switch (tree.tokenTag(token_idx)) {
-            .string_literal, .multiline_string_literal_line => {},
-            else => token_idx -|= 1,
+            switch (tree.tokenTag(token_idx)) {
+                .multiline_string_literal_line => try generateMultilineStringCodeActions(builder, token_idx),
+                .string_literal => try generateStringLiteralCodeActions(builder, token_idx),
+                else => {},
+            }
         }
 
-        switch (tree.tokenTag(token_idx)) {
-            .multiline_string_literal_line => try generateMultilineStringCodeActions(builder, token_idx),
-            .string_literal => try generateStringLiteralCodeActions(builder, token_idx),
-            else => {},
-        }
+        try generateXzlsCodeActions(builder, range, source_index, ctx);
     }
 
     pub fn createTextEditLoc(self: *Builder, loc: offsets.Loc, new_text: []const u8) types.TextEdit {
@@ -1303,4 +1305,157 @@ test getCaptureLoc {
     try std.testing.expect(getCaptureLoc("||", .{ .start = 1, .end = 1 }) == null);
     try std.testing.expect(getCaptureLoc("| |", .{ .start = 1, .end = 3 }) == null);
     try std.testing.expect(getCaptureLoc("|    |", .{ .start = 1, .end = 6 }) == null);
+}
+
+
+fn generateXzlsCodeActions(
+    builder: *Builder,
+    range: types.Range,
+    source_index: usize,
+    ctx: Analyser.PositionContext,
+) Analyser.Error!void {
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
+
+    const tree = &builder.handle.tree;
+    const arena = builder.arena;
+
+    // Helper to build arguments for hover-like commands [ { textDocument: { uri: "..." }, position: { line: ..., character: ... } } ]
+    const hover_params: types.Hover.Params = .{
+        .textDocument = .{ .uri = builder.handle.uri.raw },
+        .position = range.start,
+    };
+    const hover_bytes = std.json.Stringify.valueAlloc(arena, hover_params, .{}) catch return;
+    const hover_json = std.json.parseFromSliceLeaky(std.json.Value, arena, hover_bytes, .{}) catch return;
+    const hover_args = try arena.alloc(std.json.Value, 1);
+    hover_args[0] = hover_json;
+
+    // 1. Package Graph action
+    try builder.actions.append(arena, .{
+        .title = "xzls: View Package Graph",
+        .kind = .refactor,
+        .command = .{
+            .title = "View Package Graph",
+            .command = "xzls.viewPackageGraph",
+            .arguments = &.{},
+        },
+    });
+
+    // 2. Try to resolve symbol / type at cursor
+    var target_type: ?Analyser.Type = null;
+    var name_str: []const u8 = "symbol";
+
+    switch (ctx) {
+        .var_access, .test_doctest_name => {
+            if (offsets.identifierTokenAndLocFromIndex(tree, source_index)) |res| {
+                name_str = offsets.locToSlice(tree.source, res[1]);
+                if (try builder.analyser.lookupSymbolGlobal(builder.handle, name_str, source_index)) |decl| {
+                    target_type = try decl.resolveType(builder.analyser);
+                }
+            }
+        },
+        .field_access => |loc| {
+            var decls: std.ArrayList(Analyser.DeclWithHandle) = .empty;
+            var tys: std.ArrayList(Analyser.Type) = .empty;
+            _ = try builder.analyser.getSymbolFieldAccessesHighlight(arena, builder.handle, source_index, loc, &decls, &tys);
+            if (tys.items.len > 0) {
+                target_type = tys.items[0];
+            } else if (decls.items.len > 0) {
+                target_type = try decls.items[0].resolveType(builder.analyser);
+            }
+        },
+        .enum_literal => {
+            if (offsets.identifierTokenAndLocFromIndex(tree, source_index)) |res| {
+                name_str = offsets.locToSlice(tree.source, res[1]);
+                if (try builder.analyser.getSymbolEnumLiteral(builder.handle, source_index, name_str)) |res_enum| {
+                    target_type = res_enum[1] orelse try res_enum[0].resolveType(builder.analyser);
+                }
+            }
+        },
+        else => {},
+    }
+
+    const t = target_type orelse return;
+
+    // Memory layout code action
+    if (try t.computeMemoryLayout(builder.analyser)) |layout| {
+        try builder.actions.append(arena, .{
+            .title = try std.fmt.allocPrint(arena, "xzls: View Memory Layout ('{s}')", .{name_str}),
+            .kind = .refactor,
+            .command = .{
+                .title = "View Memory Layout",
+                .command = "xzls.viewMemoryLayout",
+                .arguments = hover_args,
+            },
+        });
+
+        // Insert comment action
+        var aw: std.Io.Writer.Allocating = .init(arena);
+        defer aw.deinit();
+        aw.writer.print("// [Memory Layout] '{s}': size = {d} bytes, align = {d}\n", .{ name_str, layout.size, layout.alignment }) catch {};
+
+        switch (t.data) {
+            .container => |info| {
+                const container_handle = info.scope_handle.handle;
+                const ctree = &container_handle.tree;
+                const node = info.scope_handle.toNode();
+                var member_buf: [2]Ast.Node.Index = undefined;
+                if (ctree.fullContainerDecl(&member_buf, node)) |container_decl| {
+                    for (container_decl.ast.members) |member| {
+                        switch (ctree.nodeTag(member)) {
+                            .container_field_init, .container_field_align, .container_field => {
+                                const fname = offsets.tokenToSlice(ctree, ctree.nodeMainToken(member));
+                                const foffset = (try Analyser.Type.computeFieldOffset(builder.analyser, t, fname)) orelse 0;
+                                const field_decl: Analyser.DeclWithHandle = .{ .decl = .{ .ast_node = member }, .handle = container_handle, .container_type = t };
+                                const fl = if (try field_decl.resolveType(builder.analyser)) |fty|
+                                    (try fty.computeMemoryLayout(builder.analyser)) orelse Analyser.Type.MemoryLayout{ .size = 0, .alignment = 1 }
+                                else
+                                    Analyser.Type.MemoryLayout{ .size = 0, .alignment = 1 };
+                                aw.writer.print("//   • {s}: offset {d}, size {d}, align {d}\n", .{ fname, foffset, fl.size, fl.alignment }) catch {};
+                            },
+                            else => {},
+                        }
+                    }
+                }
+            },
+            else => {},
+        }
+
+        const layout_comment = aw.toOwnedSlice() catch "";
+        if (layout_comment.len > 0) {
+            const line_loc = offsets.lineLocAtIndex(tree.source, source_index);
+            try builder.actions.append(arena, .{
+                .title = try std.fmt.allocPrint(arena, "xzls: Insert Memory Layout Comment ('{s}')", .{name_str}),
+                .kind = .refactor,
+                .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditPos(line_loc.start, layout_comment)}),
+            });
+        }
+    }
+
+    // Comptime evaluation code action
+    const type_str = try t.stringifyTypeOf(builder.analyser, .{ .truncate_container_decls = false });
+    const val_str: ?[]const u8 = if (t.data == .ip_index or t.is_type_val)
+        t.stringifyTypeVal(builder.analyser, .{ .truncate_container_decls = false }) catch null
+    else
+        null;
+
+    try builder.actions.append(arena, .{
+        .title = try std.fmt.allocPrint(arena, "xzls: View Comptime ('{s}')", .{name_str}),
+        .kind = .refactor,
+        .command = .{
+            .title = "View Comptime",
+            .command = "xzls.viewComptime",
+            .arguments = hover_args,
+        },
+    });
+
+    if (val_str) |vs| {
+        const line_loc = offsets.lineLocAtIndex(tree.source, source_index);
+        const comptime_comment = try std.fmt.allocPrint(arena, "// [Comptime] '{s}': {s} = {s}\n", .{ name_str, type_str, vs });
+        try builder.actions.append(arena, .{
+            .title = try std.fmt.allocPrint(arena, "xzls: Insert Comptime Value Comment ('{s}')", .{name_str}),
+            .kind = .refactor,
+            .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditPos(line_loc.start, comptime_comment)}),
+        });
+    }
 }

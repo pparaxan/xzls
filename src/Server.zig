@@ -1827,14 +1827,52 @@ fn executeCommandHandler(server: *Server, arena: std.mem.Allocator, params: type
 
     if (std.mem.eql(u8, command, "xzls.viewMemoryLayout")) {
         const result = try server.handleViewMemoryLayout(arena, first_arg);
+        if (result) |res| {
+            var aw: std.Io.Writer.Allocating = .init(arena);
+            defer aw.deinit();
+            aw.writer.print("[xzls] Memory Layout: '{s}' (size: {d} bytes, align: {d})\n", .{ res.type_name, res.size, res.alignment }) catch {};
+            for (res.fields) |f| {
+                aw.writer.print("  • {s}: offset {d}, size {d}, align {d}\n", .{ f.name, f.offset, f.size, f.alignment }) catch {};
+            }
+            if (aw.toOwnedSlice() catch null) |msg| {
+                server.showMessage(.Info, "{s}", .{msg});
+            }
+        }
         return try toJsonValue(arena, result);
     }
     if (std.mem.eql(u8, command, "xzls.viewComptime")) {
         const result = try server.handleViewComptime(arena, first_arg);
+        if (result) |res| {
+            var aw: std.Io.Writer.Allocating = .init(arena);
+            defer aw.deinit();
+            aw.writer.print("[xzls] Comptime: '{s}': {s}", .{ res.name, res.type_name }) catch {};
+            if (res.value_str) |vs| {
+                aw.writer.print(" = {s}", .{vs}) catch {};
+            }
+            aw.writer.writeAll("\n") catch {};
+            for (res.members) |m| {
+                aw.writer.print("  • {s} {s}: {s}\n", .{ m.kind, m.name, m.type_str }) catch {};
+            }
+            if (aw.toOwnedSlice() catch null) |msg| {
+                server.showMessage(.Info, "{s}", .{msg});
+            }
+        }
         return try toJsonValue(arena, result);
     }
     if (std.mem.eql(u8, command, "xzls.viewPackageGraph")) {
         const result = try server.handleViewPackageGraph(arena);
+        var aw: std.Io.Writer.Allocating = .init(arena);
+        defer aw.deinit();
+        aw.writer.print("[xzls] Package Graph: {d} modules, {d} dependencies\n", .{ result.modules.len, result.dependencies.len }) catch {};
+        for (result.dependencies) |dep| {
+            aw.writer.print("  • dep: {s} ({s})\n", .{ dep.name, dep.path }) catch {};
+        }
+        for (result.modules) |mod| {
+            aw.writer.print("  • root: {s}\n", .{ mod.root_source_file }) catch {};
+        }
+        if (aw.toOwnedSlice() catch null) |msg| {
+            server.showMessage(.Info, "{s}", .{msg});
+        }
         return try toJsonValue(arena, result);
     }
     if (std.mem.eql(u8, command, "xzls.ssr")) {
