@@ -568,6 +568,14 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
             },
             .inlayHintProvider = .{ .bool = true },
             .callHierarchyProvider = .{ .bool = true },
+            .executeCommandProvider = .{
+                .commands = &.{
+                    "xzls.viewMemoryLayout",
+                    "xzls.viewComptime",
+                    "xzls.viewPackageGraph",
+                    "xzls.ssr",
+                },
+            },
         },
     };
 }
@@ -1274,6 +1282,7 @@ const HandledRequestParams = union(enum) {
     @"textDocument/prepareCallHierarchy": types.call_hierarchy.PrepareParams,
     @"callHierarchy/incomingCalls": types.call_hierarchy.IncomingCallsParams,
     @"callHierarchy/outgoingCalls": types.call_hierarchy.OutgoingCallsParams,
+    @"workspace/executeCommand": types.workspace.execute_command.Params,
     other: lsp.MethodWithParams,
 };
 
@@ -1321,6 +1330,7 @@ fn isBlockingMessage(msg: Message) bool {
             .@"textDocument/prepareCallHierarchy",
             .@"callHierarchy/incomingCalls",
             .@"callHierarchy/outgoingCalls",
+            .@"workspace/executeCommand",
             => return false,
             .other => return false,
         },
@@ -1499,6 +1509,7 @@ pub fn sendRequestSync(server: *Server, arena: std.mem.Allocator, comptime metho
         .@"textDocument/prepareCallHierarchy" => try @import("features/call_hierarchy.zig").@"textDocument/prepareCallHierarchy"(server, arena, params),
         .@"callHierarchy/incomingCalls" => try @import("features/call_hierarchy.zig").@"callHierarchy/incomingCalls"(server, arena, params),
         .@"callHierarchy/outgoingCalls" => try @import("features/call_hierarchy.zig").@"callHierarchy/outgoingCalls"(server, arena, params),
+        .@"workspace/executeCommand" => try server.executeCommandHandler(arena, params),
         .other => return null,
     };
 }
@@ -1796,6 +1807,41 @@ pub fn sendMessageSync(server: *Server, arena: std.mem.Allocator, comptime metho
     } else if (comptime lsp.isNotificationMethod(method)) {
         return try server.sendNotificationSync(arena, method, params);
     } else unreachable;
+}
+
+/// Handles workspace/executeCommand requests for xzls custom commands.
+/// Serializes the typed result back to ?LSPAny (std.json.Value) as required by the LSP spec.
+fn executeCommandHandler(server: *Server, arena: std.mem.Allocator, params: types.workspace.execute_command.Params) Error!?std.json.Value {
+    const command = params.command;
+    const first_arg: ?std.json.Value = if (params.arguments) |a| if (a.len > 0) a[0] else null else null;
+
+    // Helper: serialize any typed value to std.json.Value via a round-trip through JSON text.
+    const toJsonValue = struct {
+        fn call(alloc: std.mem.Allocator, val: anytype) error{OutOfMemory}!std.json.Value {
+            const bytes = std.json.Stringify.valueAlloc(alloc, val, .{}) catch return .null;
+            defer alloc.free(bytes);
+            const parsed = std.json.parseFromSliceLeaky(std.json.Value, alloc, bytes, .{}) catch return .null;
+            return parsed;
+        }
+    }.call;
+
+    if (std.mem.eql(u8, command, "xzls.viewMemoryLayout")) {
+        const result = try server.handleViewMemoryLayout(arena, first_arg);
+        return try toJsonValue(arena, result);
+    }
+    if (std.mem.eql(u8, command, "xzls.viewComptime")) {
+        const result = try server.handleViewComptime(arena, first_arg);
+        return try toJsonValue(arena, result);
+    }
+    if (std.mem.eql(u8, command, "xzls.viewPackageGraph")) {
+        const result = try server.handleViewPackageGraph(arena);
+        return try toJsonValue(arena, result);
+    }
+    if (std.mem.eql(u8, command, "xzls.ssr")) {
+        const result = try server.handleSsr(arena, first_arg);
+        return try toJsonValue(arena, result);
+    }
+    return null;
 }
 
 fn processMessage(server: *Server, arena: std.mem.Allocator, message: Message) Error!?[]u8 {
