@@ -24,7 +24,7 @@ test "ast error" {
                 .end = .{ .line = 0, .character = 9 },
             },
             .severity = .Error,
-            .source = "zls",
+            .source = "xzls",
             .message = .{ .string = "expected ';' after declaration" },
         },
     }, .{});
@@ -43,7 +43,7 @@ test "ast-check" {
             },
             .severity = .Error,
             .tags = &.{.Unnecessary},
-            .source = "zls",
+            .source = "xzls",
             .message = .{ .string = "unused local constant" },
         },
     }, .{});
@@ -60,7 +60,7 @@ test "ast-check" {
             },
             .severity = .Error,
             .tags = &.{.Unnecessary},
-            .source = "zls",
+            .source = "xzls",
             .message = .{ .string = "unused local variable" },
         },
     }, .{});
@@ -75,10 +75,9 @@ test "warn style" {
                 .start = .{ .line = 0, .character = 20 },
                 .end = .{ .line = 0, .character = 27 },
             },
-            .code = .{ .string = "dot_slash_import" },
             .severity = .Hint,
-            .source = "zls",
-            .message = .{ .string = "A ./ is not needed in imports" },
+            .source = "xzls",
+            .message = .{ .string = "`./` isn't needed in imports." },
         },
     }, .{ .warn_style = true });
     try testDiagnostics(
@@ -90,20 +89,18 @@ test "warn style" {
                 .start = .{ .line = 0, .character = 3 },
                 .end = .{ .line = 0, .character = 6 },
             },
-            .code = .{ .string = "bad_style" },
             .severity = .Hint,
-            .source = "zls",
-            .message = .{ .string = "Functions should be camelCase" },
+            .source = "xzls",
+            .message = .{ .string = "Functions should be camelCase." },
         },
         .{
             .range = .{
                 .start = .{ .line = 1, .character = 3 },
                 .end = .{ .line = 1, .character = 6 },
             },
-            .code = .{ .string = "bad_style" },
             .severity = .Hint,
-            .source = "zls",
-            .message = .{ .string = "Type functions should be PascalCase" },
+            .source = "xzls",
+            .message = .{ .string = "Type functions should be PascalCase." },
         },
     }, .{ .warn_style = true });
 }
@@ -117,10 +114,9 @@ test "highlight global var decls" {
                 .start = .{ .line = 0, .character = 0 },
                 .end = .{ .line = 0, .character = 3 },
             },
-            .code = .{ .string = "highlight_global_var_declarations" },
             .severity = .Hint,
-            .source = "zls",
-            .message = .{ .string = "Global var declaration" },
+            .source = "xzls",
+            .message = .{ .string = "Global mutable variable. Consider using `const` if mutation is unnecessary." },
         },
     }, .{ .highlight_global_var_declarations = true });
 }
@@ -138,7 +134,7 @@ test "autofix comment" {
                 .end = .{ .line = 2, .character = 11 },
             },
             .severity = .Information,
-            .source = "zls",
+            .source = "xzls",
             .message = .{ .string = "auto discard for unused variable" },
             .relatedInformation = &.{
                 .{
@@ -163,6 +159,7 @@ fn testDiagnostics(
         warn_style: bool = false,
         highlight_global_var_declarations: bool = false,
         autofix: bool = false,
+        enable_checks: bool = false,
     },
 ) !void {
     var context: Context = try .init();
@@ -174,6 +171,7 @@ fn testDiagnostics(
 
     context.server.config_manager.config.warn_style = options.warn_style;
     context.server.config_manager.config.highlight_global_var_declarations = options.highlight_global_var_declarations;
+    context.server.config_manager.config.enable_checks = options.enable_checks;
     context.server.client_capabilities.supports_code_action_fixall = options.autofix;
     context.server.client_capabilities.supports_publish_diagnostics = true;
     try zls.diagnostics.generateDiagnostics(context.server, context.server.document_store.getHandle(uri).?);
@@ -204,8 +202,8 @@ test "resource leak diagnostic" {
                 .end = .{ .line = 2, .character = 13 },
             },
             .severity = .Warning,
-            .source = "xzls-resource",
-            .message = .{ .string = "resource 'buf' allocated but never freed with free/destroy" },
+            .source = "xzls",
+            .message = .{ .string = "Resource 'buf' is allocated but never freed with either `free() or `destroy()`." },
         },
     }, .{});
 
@@ -242,8 +240,8 @@ test "resource leak diagnostic" {
                 .end = .{ .line = 6, .character = 11 },
             },
             .severity = .Warning,
-            .source = "xzls-resource",
-            .message = .{ .string = "resource 's' allocated but never freed with deinit" },
+            .source = "xzls",
+            .message = .{ .string = "Resource 's' is allocated but never got freed with deinit." },
         },
     }, .{});
 
@@ -266,8 +264,8 @@ test "resource leak diagnostic" {
                 .end = .{ .line = 8, .character = 5 },
             },
             .severity = .Warning,
-            .source = "xzls-resource",
-            .message = .{ .string = "resource 's' allocated but never freed with deinit" },
+            .source = "xzls",
+            .message = .{ .string = "Resource 's' is allocated but never got freed with deinit." },
         },
     }, .{});
 
@@ -296,8 +294,8 @@ test "resource leak diagnostic" {
                 .end = .{ .line = 13, .character = 15 },
             },
             .severity = .Warning,
-            .source = "xzls-resource",
-            .message = .{ .string = "resource 'start' allocated but never freed with deinit" },
+            .source = "xzls",
+            .message = .{ .string = "Resource 'start' is allocated but never got freed with deinit." },
         },
     }, .{});
 }
