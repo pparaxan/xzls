@@ -1375,70 +1375,9 @@ fn generateXzlsCodeActions(
         else => {},
     }
 
-    const t = target_type orelse return;
-
-    // Memory layout code action
-    if (try t.computeMemoryLayout(builder.analyser)) |layout| {
-        try builder.actions.append(arena, .{
-            .title = try std.fmt.allocPrint(arena, "xzls: View Memory Layout ('{s}')", .{name_str}),
-            .kind = .refactor,
-            .command = .{
-                .title = "View Memory Layout",
-                .command = "xzls.viewMemoryLayout",
-                .arguments = hover_args,
-            },
-        });
-
-        // Insert comment action
-        var aw: std.Io.Writer.Allocating = .init(arena);
-        defer aw.deinit();
-        aw.writer.print("// [Memory Layout] '{s}': size = {d} bytes, align = {d}\n", .{ name_str, layout.size, layout.alignment }) catch {};
-
-        switch (t.data) {
-            .container => |info| {
-                const container_handle = info.scope_handle.handle;
-                const ctree = &container_handle.tree;
-                const node = info.scope_handle.toNode();
-                var member_buf: [2]Ast.Node.Index = undefined;
-                if (ctree.fullContainerDecl(&member_buf, node)) |container_decl| {
-                    for (container_decl.ast.members) |member| {
-                        switch (ctree.nodeTag(member)) {
-                            .container_field_init, .container_field_align, .container_field => {
-                                const fname = offsets.tokenToSlice(ctree, ctree.nodeMainToken(member));
-                                const foffset = (try Analyser.Type.computeFieldOffset(builder.analyser, t, fname)) orelse 0;
-                                const field_decl: Analyser.DeclWithHandle = .{ .decl = .{ .ast_node = member }, .handle = container_handle, .container_type = t };
-                                const fl = if (try field_decl.resolveType(builder.analyser)) |fty|
-                                    (try fty.computeMemoryLayout(builder.analyser)) orelse Analyser.Type.MemoryLayout{ .size = 0, .alignment = 1 }
-                                else
-                                    Analyser.Type.MemoryLayout{ .size = 0, .alignment = 1 };
-                                aw.writer.print("//   • {s}: offset {d}, size {d}, align {d}\n", .{ fname, foffset, fl.size, fl.alignment }) catch {};
-                            },
-                            else => {},
-                        }
-                    }
-                }
-            },
-            else => {},
-        }
-
-        const layout_comment = aw.toOwnedSlice() catch "";
-        if (layout_comment.len > 0) {
-            const line_loc = offsets.lineLocAtIndex(tree.source, source_index);
-            try builder.actions.append(arena, .{
-                .title = try std.fmt.allocPrint(arena, "xzls: Insert Memory Layout Comment ('{s}')", .{name_str}),
-                .kind = .refactor,
-                .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditPos(line_loc.start, layout_comment)}),
-            });
-        }
-    }
+    _ = target_type orelse return;
 
     // Comptime evaluation code action
-    const type_str = try t.stringifyTypeOf(builder.analyser, .{ .truncate_container_decls = false });
-    const val_str: ?[]const u8 = if (t.data == .ip_index or t.is_type_val)
-        t.stringifyTypeVal(builder.analyser, .{ .truncate_container_decls = false }) catch null
-    else
-        null;
-
     try builder.actions.append(arena, .{
         .title = try std.fmt.allocPrint(arena, "xzls: View Comptime ('{s}')", .{name_str}),
         .kind = .refactor,
@@ -1448,14 +1387,4 @@ fn generateXzlsCodeActions(
             .arguments = hover_args,
         },
     });
-
-    if (val_str) |vs| {
-        const line_loc = offsets.lineLocAtIndex(tree.source, source_index);
-        const comptime_comment = try std.fmt.allocPrint(arena, "// [Comptime] '{s}': {s} = {s}\n", .{ name_str, type_str, vs });
-        try builder.actions.append(arena, .{
-            .title = try std.fmt.allocPrint(arena, "xzls: Insert Comptime Value Comment ('{s}')", .{name_str}),
-            .kind = .refactor,
-            .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditPos(line_loc.start, comptime_comment)}),
-        });
-    }
 }
