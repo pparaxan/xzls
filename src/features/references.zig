@@ -268,6 +268,35 @@ const Builder = struct {
                 const candidate = try deref_lhs.lookupSymbol(builder.analyser, field_name) orelse return;
                 break :candidate .{ candidate, alias_name_token };
             },
+            .@"asm",
+            .asm_simple,
+            => {
+                if (ast.fullAsm(tree, node)) |asm_data| {
+                    for (asm_data.outputs) |output_node| {
+                        const name_tok = tree.nodeMainToken(output_node);
+                        if (name_tok + 4 < tree.tokens.len and tree.tokenTag(name_tok + 4) == .arrow) continue;
+                        const r_paren = tree.nodeData(output_node).opt_node_and_token[1];
+                        var t = name_tok + 3;
+                        while (t < r_paren) : (t += 1) {
+                            if (tree.tokenTag(t) == .identifier) {
+                                const name = offsets.identifierTokenToNameSlice(tree, t);
+                                if (std.mem.eql(u8, name, target_symbol_name)) {
+                                    if (try builder.analyser.lookupSymbolGlobal(handle, name, tree.tokenStart(t))) |cand| {
+                                        const resolved = if (builder.resolve_aliases)
+                                            (try builder.analyser.resolveVarDeclAlias(cand)) orelse cand
+                                        else
+                                            cand;
+                                        if (builder.target_symbol.eql(resolved)) {
+                                            try builder.add(handle, t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return;
+            },
             else => return,
         };
 
