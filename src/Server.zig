@@ -1696,7 +1696,10 @@ fn handleViewComptime(server: *Server, arena: std.mem.Allocator, params_val: ?st
 
     const t = target_type orelse return null;
     const type_str = try t.stringifyTypeOf(&analyser, .{ .truncate_container_decls = false });
-    const val_str = try t.stringifyTypeVal(&analyser, .{ .truncate_container_decls = false });
+    const val_str: ?[]const u8 = if (t.data == .ip_index or t.is_type_val)
+        t.stringifyTypeVal(&analyser, .{ .truncate_container_decls = false }) catch null
+    else
+        null;
 
     var members_list: std.ArrayList(ViewComptimeResult.MemberInfo) = .empty;
     switch (t.data) {
@@ -1734,7 +1737,7 @@ fn handleViewComptime(server: *Server, arena: std.mem.Allocator, params_val: ?st
         .name = name_str,
         .type_name = type_str,
         .is_type = t.is_type_val,
-        .value_str = if (std.mem.eql(u8, type_str, val_str)) null else val_str,
+        .value_str = if (val_str) |vs| (if (std.mem.eql(u8, type_str, vs)) null else vs) else null,
         .members = members_list.items,
     };
 }
