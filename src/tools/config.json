@@ -96,12 +96,6 @@
             "default": true
         },
         {
-            "name": "auto_import_on_completion",
-            "description": "Enables auto-import on completion: when a completion item is selected that comes from an unimported file, XZLS inserts the missing const import at the top of the file.",
-            "type": "bool",
-            "default": true
-        },
-        {
             "name": "force_autofix",
             "description": "Work around editors that do not support 'source.fixall' code actions on save. This option may deliver a substandard user experience. Please refer to the installation guide to see which editors natively support code actions on save.",
             "type": "bool",
