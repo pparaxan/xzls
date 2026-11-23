@@ -709,9 +709,6 @@ pub fn collectResourceDiagnostics(
                     init_node_raw = rhs_node;
                 } else {
                     const var_decl = tree.fullVarDecl(node) orelse continue;
-                    // Only warn on `var` declarations — `const` bindings are not
-                    // the resource owner and would produce false positives.
-                    if (tree.tokenTag(var_decl.ast.mut_token) != .keyword_var) continue;
                     name_token = var_decl.ast.mut_token + 1;
                     if (tree.tokenTag(name_token) != .identifier) continue;
                     init_node_raw = var_decl.ast.init_node.unwrap() orelse continue;
