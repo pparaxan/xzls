@@ -1,10 +1,48 @@
 const std = @import("std");
 const zig_builtin = @import("builtin");
-const zls = @import("zls");
 const exe_options = @import("exe_options");
 
 const tracy = @import("tracy");
 const known_folders = @import("known-folders");
+
+pub const build_options = @import("build_options");
+pub const lsp = @import("lsp");
+
+pub const analyser = @import("analyser/analyser.zig");
+
+pub const Analyser = @import("analysis.zig");
+pub const ast = @import("ast.zig");
+pub const BuildAssociatedConfig = @import("BuildAssociatedConfig.zig");
+pub const Config = @import("Config.zig");
+pub const configuration = @import("configuration.zig");
+pub const DiagnosticsCollection = @import("DiagnosticsCollection.zig");
+pub const diff = @import("diff.zig");
+pub const DocumentScope = @import("DocumentScope.zig");
+pub const DocumentStore = @import("DocumentStore.zig");
+pub const offsets = @import("offsets.zig");
+pub const print_ast = @import("print_ast.zig");
+pub const Server = @import("Server.zig");
+pub const snippets = @import("snippets.zig");
+pub const testing = @import("testing.zig");
+pub const TrigramStore = @import("TrigramStore.zig");
+pub const Uri = @import("Uri.zig");
+
+pub const code_actions = @import("features/code_actions.zig");
+pub const completions = @import("features/completions.zig");
+pub const diagnostics = @import("features/diagnostics.zig");
+pub const document_symbol = @import("features/document_symbol.zig");
+pub const folding_range = @import("features/folding_range.zig");
+pub const goto = @import("features/goto.zig");
+pub const hover = @import("features/hover.zig");
+pub const inlay_hints = @import("features/inlay_hints.zig");
+pub const references = @import("features/references.zig");
+pub const selection_range = @import("features/selection_range.zig");
+pub const semantic_tokens = @import("features/semantic_tokens.zig");
+pub const signature_help = @import("features/signature_help.zig");
+pub const ssr = @import("features/ssr.zig");
+pub const workspace_symbols = @import("features/workspace_symbols.zig");
+
+const xzls = @This();
 
 const log = std.log.scoped(.main);
 
@@ -17,8 +55,8 @@ const usage =
     \\  env                       Print config path, log path and version
     \\
     \\General Options:
-    \\  --config-path [path]      Set path to the 'zls.json' configuration file
-    \\  --log-file [path]         Set path to the 'zls.log' log file
+    \\  --config-path [path]      Set path to the 'xzls.json' configuration file
+    \\  --log-file [path]         Set path to the 'xzls.log' log file
     \\  --log-level [enum]        The Log Level to be used.
     \\                              Supported Values:
     \\                                err
@@ -41,7 +79,7 @@ pub const std_options: std.Options = .{
 };
 
 /// Log messages with the LSP 'window/logMessage' message.
-var log_transport: ?*zls.lsp.Transport = null;
+var log_transport: ?*xzls.lsp.Transport = null;
 /// Log messages to stderr.
 var log_stderr: bool = true;
 /// Log messages to the given file.
@@ -55,20 +93,20 @@ fn logFn(
     args: anytype,
 ) void {
     var buffer: [4096]u8 = undefined;
-    comptime std.debug.assert(buffer.len >= zls.lsp.minimum_logging_buffer_size);
+    comptime std.debug.assert(buffer.len >= xzls.lsp.minimum_logging_buffer_size);
 
     const io = std.Options.debug_io;
     const prev = io.swapCancelProtection(.blocked);
     defer _ = io.swapCancelProtection(prev);
 
     if (log_transport) |transport| {
-        const lsp_message_type: zls.lsp.types.window.MessageType = switch (level) {
+        const lsp_message_type: xzls.lsp.types.window.MessageType = switch (level) {
             .err => .Error,
             .warn => .Warning,
             .info => .Info,
             .debug => .Debug,
         };
-        const json_message = zls.lsp.bufPrintLogMessage(&buffer, lsp_message_type, format, args);
+        const json_message = xzls.lsp.bufPrintLogMessage(&buffer, lsp_message_type, format, args);
         transport.writeJsonMessage(io, json_message) catch |err| switch (err) {
             error.Canceled => unreachable,
             else => {},
@@ -128,7 +166,7 @@ fn defaultLogFilePath(
     if (zig_builtin.target.os.tag == .wasi) return null;
     const cache_path = try known_folders.getPath(io, allocator, environ_map, .cache) orelse return null;
     defer allocator.free(cache_path);
-    return try std.Io.Dir.path.join(allocator, &.{ cache_path, "zls", "zls.log" });
+    return try std.Io.Dir.path.join(allocator, &.{ cache_path, "zls", "xzls.log" });
 }
 
 fn createLogFile(
@@ -179,10 +217,10 @@ const Env = struct {
     /// Path to a user specific configuration directory relative to which configuration files will be searched.
     /// Not `null` unless [known-folders](https://github.com/ziglibs/known-folders) was unable to find a local configuration directory.
     local_config_dir: ?[]const u8,
-    /// Path to a `zls.json` config file. Will be resolved by looking in the local configuration directory and then falling back to the global directory.
-    /// Can be null if no `zls.json` was found in the global/local config directory.
+    /// Path to a `xzls.json` config file. Will be resolved by looking in the local configuration directory and then falling back to the global directory.
+    /// Can be null if no `xzls.json` was found in the global/local config directory.
     config_file: ?[]const u8,
-    /// Path to a `zls.log` file where ZLS will append logging output. The file may be truncated or cleared by ZLS.
+    /// Path to a `xzls.log` file where ZLS will append logging output. The file may be truncated or cleared by xzls.
     /// Not `null` unless [known-folders](https://github.com/ziglibs/known-folders) was unable to find a cache directory.
     log_file: ?[]const u8,
 };
@@ -233,7 +271,7 @@ fn @"zls env"(
     const writer = &file_writer.interface;
 
     const env: Env = .{
-        .version = zls.build_options.version_string,
+        .version = xzls.build_options.version_string,
         .global_cache_dir = zls_global_cache_dir,
         .global_config_dir = global_config_dir,
         .local_config_dir = local_config_dir,
@@ -249,7 +287,7 @@ fn @"zls env"(
 
 const LoadConfigResult = union(enum) {
     success: struct {
-        config: zls.Config,
+        config: xzls.Config,
         config_arena: std.heap.ArenaAllocator.State,
         /// file path of the config.json
         path: []const u8,
@@ -310,7 +348,7 @@ fn loadConfigFromFile(io: std.Io, allocator: std.mem.Allocator, file_path: []con
 
     @setEvalBranchQuota(10000);
     const config = std.json.parseFromTokenSourceLeaky(
-        zls.Config,
+        xzls.Config,
         arena_allocator.allocator(),
         &scanner,
         parse_options,
@@ -348,7 +386,7 @@ fn loadConfigFromSystem(io: std.Io, allocator: std.mem.Allocator, environ_map: *
     if (zig_builtin.target.os.tag == .wasi) return .not_found;
 
     const config_filenames = [_][]const u8{
-        "xzls.json",
+        "xxzls.json",
     };
 
     for (
@@ -376,7 +414,7 @@ fn loadConfiguration(
     io: std.Io,
     allocator: std.mem.Allocator,
     environ_map: *const std.process.Environ.Map,
-    server: *zls.Server,
+    server: *xzls.Server,
     maybe_config_path: ?[]const u8,
 ) error{ Canceled, OutOfMemory }!void {
     const tracy_zone = tracy.trace(@src());
@@ -384,7 +422,7 @@ fn loadConfiguration(
 
     var config_arena: std.heap.ArenaAllocator = .init(allocator);
     defer config_arena.deinit();
-    var config: zls.Config = .{};
+    var config: xzls.Config = .{};
 
     blk: {
         var config_result = if (maybe_config_path) |config_path|
@@ -468,7 +506,7 @@ fn parseArgs(
             try std.Io.File.stderr().writeStreamingAll(io, usage);
             std.process.exit(0);
         } else if ((arg_index == 0 and std.mem.eql(u8, arg, "version")) or std.mem.eql(u8, arg, "--version")) {
-            try std.Io.File.stdout().writeStreamingAll(io, zls.build_options.version_string ++ "\n");
+            try std.Io.File.stdout().writeStreamingAll(io, xzls.build_options.version_string ++ "\n");
             std.process.exit(0);
         } else if (arg_index == 0 and std.mem.eql(u8, arg, "env")) {
             try @"zls env"(io, allocator, environ_map);
@@ -537,7 +575,7 @@ pub fn main(init: std.process.Init.Minimal) !u8 {
     var tracy_state = if (tracy.enable_allocation) tracy.Allocator{ .parent_allocator = base_allocator } else {};
     const inner_allocator: std.mem.Allocator = if (tracy.enable_allocation) tracy_state.interface() else base_allocator;
 
-    var failing_allocator_state = if (exe_options.enable_failing_allocator) zls.testing.FailingAllocator.init(inner_allocator, exe_options.enable_failing_allocator_likelihood) else {};
+    var failing_allocator_state = if (exe_options.enable_failing_allocator) xzls.testing.FailingAllocator.init(inner_allocator, exe_options.enable_failing_allocator_likelihood) else {};
     const allocator: std.mem.Allocator = if (exe_options.enable_failing_allocator) failing_allocator_state.allocator() else inner_allocator;
 
     var threaded: std.Io.Threaded = .init(allocator, .{
@@ -561,14 +599,14 @@ pub fn main(init: std.process.Init.Minimal) !u8 {
     };
 
     var read_buffer: [256]u8 = undefined;
-    var stdio_transport: zls.lsp.Transport.Stdio = .init(&read_buffer, .stdin(), .stdout());
+    var stdio_transport: xzls.lsp.Transport.Stdio = .init(&read_buffer, .stdin(), .stdout());
 
-    var thread_safe_transport: zls.lsp.ThreadSafeTransport(.{
+    var thread_safe_transport: xzls.lsp.ThreadSafeTransport(.{
         .thread_safe_read = false,
         .thread_safe_write = true,
     }) = .init(&stdio_transport.transport);
 
-    const transport: *zls.lsp.Transport = &thread_safe_transport.transport;
+    const transport: *xzls.lsp.Transport = &thread_safe_transport.transport;
 
     log_transport = if (result.disable_lsp_logs) null else transport;
     log_stderr = result.enable_stderr_logs;
@@ -579,7 +617,7 @@ pub fn main(init: std.process.Init.Minimal) !u8 {
     }
 
     log.info("Starting XZLS      {s} @ '{s}'", .{
-        zls.build_options.version_string,
+        xzls.build_options.version_string,
         result.zls_exe_path,
     });
     if (log_file_path) |path| {
@@ -588,10 +626,10 @@ pub fn main(init: std.process.Init.Minimal) !u8 {
         log.info("Log File:         none", .{});
     }
 
-    var config_manager: zls.configuration.Manager = try .init(io, allocator, &environ_map);
+    var config_manager: xzls.configuration.Manager = try .init(io, allocator, &environ_map);
     defer config_manager.deinit();
 
-    const server: *zls.Server = try .create(.{
+    const server: *xzls.Server = try .create(.{
         .io = io,
         .allocator = allocator,
         .transport = transport,
@@ -607,5 +645,13 @@ pub fn main(init: std.process.Init.Minimal) !u8 {
         .exiting_failure => return 1,
         .exiting_success => return 0,
         else => unreachable,
+    }
+}
+
+comptime {
+    std.testing.refAllDecls(@This());
+
+    if (@import("builtin").is_test) {
+        _ = &@import("bsp.zig").BuildOnSave;
     }
 }
