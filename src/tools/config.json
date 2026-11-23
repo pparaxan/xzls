@@ -96,6 +96,30 @@
             "default": true
         },
         {
+            "name": "enable_checks",
+            "description": "Enables checks such as suppressing errors, unsafe undefined, orphans, etc.",
+            "type": "bool",
+            "default": true
+        },
+        {
+            "name": "orphans",
+            "description": "Warns on unused declarations.",
+            "type": "bool",
+            "default": true
+        },
+        {
+            "name": "suppressed_errors",
+            "description": "Warns on swallowed/mishandled errors such as `catch {}` and `catch unreachable`.",
+            "type": "bool",
+            "default": true
+        },
+        {
+            "name": "unsafe_undefined",
+            "description": "Warns on unsafe uses of `undefined` without safety comment.",
+            "type": "bool",
+            "default": true
+        },
+        {
             "name": "force_autofix",
             "description": "Work around editors that do not support 'source.fixall' code actions on save. This option may deliver a substandard user experience. Please refer to the installation guide to see which editors natively support code actions on save.",
             "type": "bool",

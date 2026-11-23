@@ -93,6 +93,10 @@ pub fn generateDiagnostics(
             try collectGlobalVarDiagnostics(&handle.tree, arena, &diagnostics, server.offset_encoding);
         }
 
+        if (config.enable_checks and handle.tree.mode == .zig) {
+            try collectDiagnostics(&handle.tree, arena, &diagnostics, server.offset_encoding, config);
+        }
+
         try server.diagnostics_collection.pushSingleDocumentDiagnostics(
             .parse,
             handle.uri,
@@ -935,6 +939,200 @@ pub fn collectEagerSemanticDiagnostics(
                 }
             },
             else => {},
+        }
+    }
+}
+
+fn isUndefinedNode(tree: *const Ast, node: Ast.Node.Index) bool {
+    if (tree.nodeTag(node) != .identifier) return false;
+    const token = tree.nodeMainToken(node);
+    return std.mem.eql(u8, offsets.tokenToSlice(tree, token), "undefined");
+}
+
+// TODO: Update this function name later.
+fn collectDiagnostics(
+    tree: *const Ast,
+    arena: std.mem.Allocator,
+    diagnostics: *std.ArrayList(types.Diagnostic),
+    offset_encoding: offsets.Encoding,
+    config: *const @import("../Config.zig"),
+) error{OutOfMemory}!void {
+    const tracy_zone = tracy.trace(@src());
+    defer tracy_zone.end();
+
+    const root_decls = tree.rootDecls();
+
+    // Orphans declarations.
+    if (config.orphans) {
+        var ident_counts: std.StringHashMapUnmanaged(usize) = .{};
+        for (0..tree.tokens.len) |tok_idx| {
+            if (tree.tokenTag(@intCast(tok_idx)) == .identifier) {
+                const name = offsets.tokenToSlice(tree, @intCast(tok_idx));
+                const gop = try ident_counts.getOrPut(arena, name);
+                if (gop.found_existing) {
+                    gop.value_ptr.* += 1;
+                } else {
+                    gop.value_ptr.* = 1;
+                }
+            }
+        }
+
+        for (root_decls) |decl_node| {
+            if (tree.fullVarDecl(decl_node)) |var_decl| {
+                if (var_decl.visib_token != null) continue;
+                const name_tok = var_decl.ast.mut_token + 1;
+                if (name_tok >= tree.tokens.len or tree.tokenTag(name_tok) != .identifier) continue;
+                const name = offsets.tokenToSlice(tree, name_tok);
+                if (std.mem.startsWith(u8, name, "_")) continue;
+
+                if (ident_counts.get(name)) |cnt| {
+                    if (cnt <= 1) {
+                        const range = offsets.tokenToRange(tree, name_tok, offset_encoding);
+                        try diagnostics.append(arena, .{
+                            .range = range,
+                            .severity = .Warning,
+                            .source = "xzls",
+                            .message = .{
+                                .string = try std.fmt.allocPrint(arena, "Declaration '{s}' is never used.", .{
+                                    name,
+                                }),
+                            },
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Walk nodes for `suppressed-errors` and `unsafe-undefined`.
+    var idx: usize = 0;
+    while (idx < tree.nodes.len) : (idx += 1) {
+        const node_idx: Ast.Node.Index = @enumFromInt(idx);
+        const tag = tree.nodeTag(node_idx);
+
+        // Suppressed errors such as `catch {}`.
+        if (config.suppressed_errors and tag == .@"catch") {
+            const data = tree.nodeData(node_idx);
+            const caught = data.node_and_node[0];
+            const catch_body = data.node_and_node[1];
+
+            var is_writer_call = false;
+            const callee_node: ?Ast.Node.Index = switch (tree.nodeTag(caught)) {
+                .call, .call_comma => tree.nodeData(caught).node_and_extra[0],
+                .call_one, .call_one_comma => tree.nodeData(caught).node_and_opt_node[0],
+                else => null,
+            };
+            if (callee_node) |callee| {
+                if (tree.nodeTag(callee) == .field_access) {
+                    const field_tok = tree.nodeData(callee).node_and_token[1];
+                    const method_name = offsets.tokenToSlice(tree, field_tok);
+                    if (std.mem.eql(u8, method_name, "print") or
+                        std.mem.eql(u8, method_name, "write") or
+                        std.mem.eql(u8, method_name, "writeAll") or
+                        std.mem.eql(u8, method_name, "writeByte"))
+                    {
+                        is_writer_call = true;
+                    }
+                }
+            }
+
+            if (!is_writer_call) {
+                const body_tag = tree.nodeTag(catch_body);
+                if (body_tag == .unreachable_literal) {
+                    const range = offsets.nodeToRange(tree, catch_body, offset_encoding);
+                    try diagnostics.append(arena, .{
+                        .range = range,
+                        .severity = .Warning,
+                        .source = "xzls",
+                        .message = .{
+                            .string = "Caught error is mishandled with `unreachable`.",
+                        },
+                    });
+                } else if (body_tag == .block_two or body_tag == .block_two_semicolon) {
+                    const opt_nodes = tree.nodeData(catch_body).opt_node_and_opt_node;
+                    if (opt_nodes[1] == .none) {
+                        if (opt_nodes[0].unwrap()) |first_stmt| {
+                            if (tree.nodeTag(first_stmt) == .unreachable_literal) {
+                                const range = offsets.nodeToRange(tree, first_stmt, offset_encoding);
+                                try diagnostics.append(arena, .{
+                                    .range = range,
+                                    .severity = .Warning,
+                                    .source = "xzls",
+                                    .message = .{
+                                        .string = "Caught error is mishandled with `unreachable`.",
+                                    },
+                                });
+                            }
+                        } else {
+                            const range = offsets.nodeToRange(tree, catch_body, offset_encoding);
+                            try diagnostics.append(arena, .{
+                                .range = range,
+                                .severity = .Warning,
+                                .source = "xzls",
+                                .message = .{
+                                    .string = "`catch` statement suppresses errors without handling.",
+                                },
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Unsafe undefined.
+        if (config.unsafe_undefined) {
+            if (tag == .equal_equal or tag == .bang_equal) {
+                const pair = tree.nodeData(node_idx).node_and_node;
+                if (isUndefinedNode(tree, pair[0]) or isUndefinedNode(tree, pair[1])) {
+                    const range = offsets.nodeToRange(tree, node_idx, offset_encoding);
+                    try diagnostics.append(arena, .{
+                        .range = range,
+                        .severity = .Error,
+                        .source = "zlint",
+                        .message = .{
+                            .string = "Comparison with `undefined` is undefined behavior.",
+                        },
+                    });
+                }
+            }
+
+            if (tree.fullVarDecl(node_idx)) |var_decl| {
+                if (var_decl.ast.init_node.unwrap()) |init_node| {
+                    if (isUndefinedNode(tree, init_node)) {
+                        var is_array = false;
+                        if (var_decl.ast.type_node.unwrap()) |type_node| {
+                            const type_tag = tree.nodeTag(type_node);
+                            if (type_tag == .array_type or type_tag == .array_type_sentinel) {
+                                is_array = true;
+                            }
+                        }
+
+                        if (!is_array) {
+                            const mut_tok = var_decl.ast.mut_token;
+                            const start_idx = tree.tokenStart(mut_tok);
+                            const line_start = std.mem.lastIndexOfScalar(u8, tree.source[0..start_idx], '\n') orelse 0;
+                            const prev_line_start = if (line_start > 0)
+                                (std.mem.lastIndexOfScalar(u8, tree.source[0..line_start - 1], '\n') orelse 0)
+                            else
+                                0;
+                            const context_window = tree.source[prev_line_start..start_idx];
+                            const has_safety = std.mem.indexOf(u8, context_window, "SAFETY:") != null;
+
+                            if (!has_safety) {
+                                const range = offsets.nodeToRange(tree, init_node, offset_encoding);
+                                try diagnostics.append(arena, .{
+                                    .range = range,
+                                    .severity = .Warning,
+                                    .source = "xzls",
+                                    .message = .{
+                                        .string = "Initializing to `undefined` requires a `// SAFETY:` comment explaining why it's safe.",
+                                    },
+                                });
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

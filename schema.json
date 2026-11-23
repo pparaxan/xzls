@@ -83,7 +83,27 @@
             "default": true
         },
         "eager_semantic_check": {
-            "description": "XZLS will scan all function bodies, including unreachable ones, for unresolved identifiers and report them as diagnostics.",
+            "description": "Enables eager semantic diagnostics: XZLS will scan all function bodies (including unreachable ones) for unresolved identifiers and report them as diagnostics.",
+            "type": "boolean",
+            "default": true
+        },
+        "enable_checks": {
+            "description": "Enables checks such as suppressing errors, unsafe undefined, orphans, etc.",
+            "type": "boolean",
+            "default": true
+        },
+        "orphans": {
+            "description": "Warns on unused declarations.",
+            "type": "boolean",
+            "default": true
+        },
+        "suppressed_errors": {
+            "description": "Warns on swallowed/mishandled errors such as `catch {}` and `catch unreachable`.",
+            "type": "boolean",
+            "default": true
+        },
+        "unsafe_undefined": {
+            "description": "Warns on unsafe uses of `undefined` without safety comment.",
             "type": "boolean",
             "default": true
         },
