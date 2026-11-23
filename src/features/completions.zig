@@ -1354,8 +1354,13 @@ fn completeFileSystemStringLiteral(builder: *Builder, pos_context: Analyser.Posi
 }
 
 fn appendZonItem(builder: *Builder, label: []const u8, snippet: []const u8, doc: []const u8) !void {
-    const loc: offsets.Loc = .{ .start = builder.source_index, .end = builder.source_index };
-    const range = offsets.locToRange(builder.orig_handle.tree.source, loc, builder.server.offset_encoding);
+    const source = builder.orig_handle.tree.source;
+    var start_idx = builder.source_index;
+    if (start_idx > 0 and source[start_idx - 1] == '.') {
+        start_idx -= 1;
+    }
+    const loc: offsets.Loc = .{ .start = start_idx, .end = builder.source_index };
+    const range = offsets.locToRange(source, loc, builder.server.offset_encoding);
     const new_text = if (builder.use_snippets) snippet else label;
     try builder.completions.append(builder.arena, .{
         .label = label,
