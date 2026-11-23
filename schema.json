@@ -80,7 +80,7 @@
         "hover_show_memory_layout": {
             "description": "Show memory layout (size, alignment, field offsets) in hover documentation",
             "type": "boolean",
-            "default": false
+            "default": true
         },
         "force_autofix": {
             "description": "Work around editors that do not support 'source.fixall' code actions on save. This option may deliver a substandard user experience. Please refer to the installation guide to see which editors natively support code actions on save.",
