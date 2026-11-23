@@ -2496,6 +2496,10 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, options: ResolveOptions) Error
                 .EnumLiteral => {
                     return Type.fromIP(analyser, .type_type, .enum_literal_type);
                 },
+                .type_info => {
+                    if (params.len < 1) return null;
+                    return try analyser.instanceStdBuiltinType("Type");
+                },
                 .Vector => {
                     if (params.len != 2) return null;
 
@@ -2717,11 +2721,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, options: ResolveOptions) Error
             else
                 unreachable;
 
-            const else_expr = loop.else_expr.unwrap() orelse return null;
-
-            // TODO: peer type resolution based on `else` and all `break` statements
-            if (try analyser.resolveTypeOfNodeInternal(.of(else_expr, handle))) |else_type|
-                return else_type.withoutIPIndex(analyser);
+            var either: std.ArrayList(Type.TypeWithDescriptor) = .empty;
 
             var it: BreakIterator = .{
                 .walker = try .init(analyser.gpa, tree, loop.then_expr),
@@ -2731,9 +2731,24 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, options: ResolveOptions) Error
             defer it.walker.deinit(analyser.gpa);
 
             while (try it.next(analyser.gpa, tree)) |operand| {
-                if (try analyser.resolveTypeOfNodeInternal(.of(operand, handle))) |operand_type|
-                    return operand_type;
+                if (try analyser.resolveTypeOfNodeInternal(.of(operand, handle))) |operand_type| {
+                    try either.append(analyser.arena, .{
+                        .type = operand_type,
+                        .descriptor = "break",
+                    });
+                }
             }
+
+            if (loop.else_expr.unwrap()) |else_expr| {
+                if (try analyser.resolveTypeOfNodeInternal(.of(else_expr, handle))) |else_type| {
+                    try either.append(analyser.arena, .{
+                        .type = else_type.withoutIPIndex(analyser),
+                        .descriptor = "else",
+                    });
+                }
+            }
+
+            return Type.fromEither(analyser, either.items);
         },
         .block,
         .block_semicolon,
