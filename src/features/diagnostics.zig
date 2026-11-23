@@ -798,18 +798,29 @@ pub fn collectResourceDiagnostics(
                         if (!checkResourceRelease(tree, fn_node, var_name, kind, custom_release)) {
                             const range = offsets.tokenToRange(tree, name_token, offset_encoding);
                             const msg = if (custom_release) |rel_fn|
-                                try std.fmt.allocPrint(arena, "resource '{s}' allocated but never freed with {s}", .{ var_name, rel_fn })
+                                try std.fmt.allocPrint(arena, "Resource '{s}' is allocated but never got freed with {s}.", .{
+                                    var_name,
+                                    rel_fn,
+                                })
                             else switch (kind) {
-                                .memory => try std.fmt.allocPrint(arena, "resource '{s}' allocated but never freed with free/destroy", .{var_name}),
-                                .file => try std.fmt.allocPrint(arena, "resource '{s}' opened but never closed with close()", .{var_name}),
-                                .mutex => try std.fmt.allocPrint(arena, "mutex '{s}' locked but never unlocked with unlock()", .{var_name}),
+                                .memory => try std.fmt.allocPrint(arena, "Resource '{s}' is allocated but never freed with either `free() or `destroy()`.", .{
+                                    var_name,
+                                }),
+                                .file => try std.fmt.allocPrint(arena, "Resource '{s}' is opened but it was never closed with `close()`", .{
+                                    var_name,
+                                }),
+                                .mutex => try std.fmt.allocPrint(arena, "Mutex '{s}' is locked but it was never unlocked with `unlock()`", .{
+                                    var_name,
+                                }),
                             };
                             try diagnostics.append(arena, .{
                                 .range = range,
                                 .severity = .Warning,
                                 .code = null,
-                                .source = "xzls-resource",
-                                .message = .{ .string = msg },
+                                .source = "xzls",
+                                .message = .{
+                                    .string = msg,
+                                },
                             });
                         }
                     }
