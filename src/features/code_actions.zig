@@ -1330,7 +1330,7 @@ fn generateXzlsCodeActions(
     const hover_args = try arena.alloc(std.json.Value, 1);
     hover_args[0] = hover_json;
 
-
+    try generateCodeActions(builder, source_index);
 
     // 2. Try to resolve symbol / type at cursor
     var target_type: ?Analyser.Type = null;
@@ -1378,4 +1378,83 @@ fn generateXzlsCodeActions(
             .arguments = hover_args,
         },
     });
+}
+
+// TODO: Change the function name later?
+fn generateCodeActions(
+    builder: *Builder,
+    source_index: usize,
+) Analyser.Error!void {
+    const tree = &builder.handle.tree;
+    const arena = builder.arena;
+
+    var best_catch: ?Ast.Node.Index = null;
+    var smallest_catch_span: usize = std.math.maxInt(usize);
+    for (0..tree.nodes.len) |idx| {
+        const n: Ast.Node.Index = @enumFromInt(idx);
+        if (tree.nodeTag(n) == .@"catch") {
+            const loc = offsets.nodeToLoc(tree, n);
+            if (loc.start <= source_index and source_index <= loc.end) {
+                const span = loc.end - loc.start;
+                if (span < smallest_catch_span) {
+                    smallest_catch_span = span;
+                    best_catch = n;
+                }
+            }
+        }
+    }
+
+    if (best_catch) |catch_node| {
+        const caught, const catch_body = tree.nodeData(catch_node).node_and_node;
+        const catch_loc = offsets.nodeToLoc(tree, catch_node);
+        const caught_loc = offsets.nodeToLoc(tree, caught);
+        const caught_slice = offsets.locToSlice(tree.source, caught_loc);
+
+        const body_tag = tree.nodeTag(catch_body);
+        const is_unreachable = body_tag == .unreachable_literal;
+        var is_empty_block = false;
+        if (body_tag == .block_two or body_tag == .block_two_semicolon) {
+            const opt_nodes = tree.nodeData(catch_body).opt_node_and_opt_node;
+            if (opt_nodes[0] == .none and opt_nodes[1] == .none) {
+                is_empty_block = true;
+            }
+        }
+
+        if (is_unreachable or is_empty_block) {
+            const try_code = try std.fmt.allocPrint(arena, "try {s}", .{caught_slice});
+            try builder.actions.append(arena, .{
+                .title = "Replace with 'try'",
+                .kind = .quickfix,
+                .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditLoc(catch_loc, try_code)}),
+            });
+
+            const panic_code = try std.fmt.allocPrint(arena, "{s} catch @panic(\"unhandled error\")", .{caught_slice});
+            try builder.actions.append(arena, .{
+                .title = "Replace with '@panic'",
+                .kind = .quickfix,
+                .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditLoc(catch_loc, panic_code)}),
+            });
+        }
+    }
+
+    // Enclosing `var_decl` with `= undefined`
+    for (0..tree.nodes.len) |idx| {
+        const n: Ast.Node.Index = @enumFromInt(idx);
+        if (tree.fullVarDecl(n)) |var_decl| {
+            if (var_decl.ast.init_node.unwrap()) |init_node| {
+                if (tree.nodeTag(init_node) == .identifier and std.mem.eql(u8, offsets.tokenToSlice(tree, tree.nodeMainToken(init_node)), "undefined")) {
+                    const decl_loc = offsets.nodeToLoc(tree, n);
+                    if (decl_loc.start <= source_index and source_index <= decl_loc.end) {
+                        const line_loc = offsets.lineLocAtIndex(tree.source, decl_loc.start);
+                        try builder.actions.append(arena, .{
+                            .title = "Add a '// SAFETY: [..]' comment",
+                            .kind = .quickfix,
+                            .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditPos(line_loc.start, "// SAFETY: initialized before use\n")}),
+                        });
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }
