@@ -1,7 +1,7 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "ZLS Config",
-    "description": "Configuration file for ZLS",
+    "title": "XZLS Config",
+    "description": "Configuration file for XZLS",
     "type": "object",
     "properties": {
         "enable_snippets": {
