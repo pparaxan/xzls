@@ -1,5 +1,5 @@
 const std = @import("std");
-const zls = @import("zls");
+const zls = @import("xzls");
 
 const helper = @import("../helper.zig");
 const Context = @import("../context.zig").Context;

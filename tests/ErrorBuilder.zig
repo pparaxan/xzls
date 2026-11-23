@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const zls = @import("zls");
+const zls = @import("xzls");
 
 const offsets = zls.offsets;
 

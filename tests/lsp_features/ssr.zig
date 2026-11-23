@@ -1,5 +1,5 @@
 const std = @import("std");
-const zls = @import("zls");
+const zls = @import("xzls");
 
 const Context = @import("../context.zig").Context;
 const allocator: std.mem.Allocator = std.testing.allocator;

@@ -1,5 +1,5 @@
 const std = @import("std");
-const zls = @import("zls");
+const zls = @import("xzls");
 
 fn gen(alloc: std.mem.Allocator, rand: std.Random) ![]const u8 {
     const buffer = try alloc.alloc(u8, rand.intRangeAtMost(usize, 0, 256));

@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const zls = @import("zls");
+const zls = @import("xzls");
 const test_options = @import("test_options");
 
 const io = std.testing.io;

@@ -3,7 +3,7 @@
 //! See the `./analysis` subdirectory.
 
 const std = @import("std");
-const zls = @import("zls");
+const zls = @import("xzls");
 const builtin = @import("builtin");
 
 const helper = @import("helper.zig");

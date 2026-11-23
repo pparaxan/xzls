@@ -1,5 +1,5 @@
 const std = @import("std");
-const zls = @import("zls");
+const zls = @import("xzls");
 const builtin = @import("builtin");
 const test_options = @import("test_options");
 

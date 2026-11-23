@@ -403,7 +403,7 @@ fn convertErrorBundleToLSPDiangostics(
         try diagnostics.append(arena, .{
             .range = src_range,
             .severity = .Error,
-            .source = "zls",
+            .source = "xzls",
             .message = .{ .string = message },
             .tags = if (tags.items.len != 0) tags.items else null,
             .relatedInformation = relatedInformation,
