@@ -317,12 +317,19 @@ fn getSignatureInfo(
                     else => try analyser.getFieldAccessType(handle, loc.start, loc) orelse continue,
                 };
 
+                const maybe_dot = std.mem.lastIndexOfScalar(u8, offsets.locToSlice(tree.source, loc), '.');
+                const receiver_ty: ?Analyser.Type = if (maybe_dot) |dot_pos| blk: {
+                    const receiver_loc = offsets.Loc{ .start = loc.start, .end = loc.start + dot_pos };
+                    const recv = try analyser.getFieldAccessType(handle, loc.start, receiver_loc) orelse break :blk null;
+                    break :blk try recv.typeOf(analyser);
+                } else null;
+
                 if (try analyser.resolveFuncProtoOfCallable(ty)) |func_type| {
                     return try fnProtoToSignatureInfo(
                         analyser,
                         arena,
                         paren_commas,
-                        null,
+                        receiver_ty,
                         func_type,
                         markup_kind,
                     );
