@@ -1285,7 +1285,9 @@ fn invalidateBuildFileWorker(self: *DocumentStore, build_file: *BuildFile) std.I
 }
 
 pub fn isBuildFile(uri: Uri) bool {
-    return std.mem.endsWith(u8, uri.raw, "/build.zig");
+    if (!std.mem.endsWith(u8, uri.raw, "/build.zig")) return false;
+    if (std.mem.indexOf(u8, uri.raw, "/src/") != null) return false;
+    return true;
 }
 
 pub fn isBuiltinFile(uri: Uri) bool {
@@ -1633,7 +1635,7 @@ pub fn uriFromImportStr(
         return .{ .many = try uris.toOwnedSlice(allocator) };
     }
 
-    if (isBuildFile(handle.uri)) blk: {
+    if (self.getBuildFile(handle.uri) != null) blk: {
         const build_file = self.getBuildFile(handle.uri) orelse break :blk;
         const build_config = build_file.tryLockConfig(self.io) orelse break :blk;
         defer build_file.unlockConfig(self.io);
