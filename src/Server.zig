@@ -572,7 +572,6 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
                 .commands = &.{
                     "xzls.viewMemoryLayout",
                     "xzls.viewComptime",
-                    "xzls.viewPackageGraph",
                     "xzls.ssr",
                 },
             },
@@ -1551,26 +1550,6 @@ pub const MemoryLayoutResult = struct {
     };
 };
 
-pub const PackageGraphResult = struct {
-    modules: []const ModuleNode,
-    dependencies: []const DependencyNode,
-
-    pub const ModuleNode = struct {
-        root_source_file: []const u8,
-        imports: []const ImportEntry,
-    };
-
-    pub const ImportEntry = struct {
-        name: []const u8,
-        path: []const u8,
-    };
-
-    pub const DependencyNode = struct {
-        name: []const u8,
-        path: []const u8,
-    };
-};
-
 fn handleViewMemoryLayout(server: *Server, arena: std.mem.Allocator, params_val: ?std.json.Value) Error!?MemoryLayoutResult {
     const val = params_val orelse return null;
     const params = std.json.parseFromValueLeaky(types.Hover.Params, arena, val, .{}) catch return null;
@@ -1760,38 +1739,6 @@ fn handleViewComptime(server: *Server, arena: std.mem.Allocator, params_val: ?st
     };
 }
 
-fn handleViewPackageGraph(server: *Server, arena: std.mem.Allocator) Error!PackageGraphResult {
-    var modules_list: std.ArrayList(PackageGraphResult.ModuleNode) = .empty;
-    var deps_list: std.ArrayList(PackageGraphResult.DependencyNode) = .empty;
-
-    if (DocumentStore.supports_build_system) {
-        for (server.document_store.build_files.values()) |build_file| {
-            const build_config = build_file.tryLockConfig(server.io) orelse continue;
-            defer build_file.unlockConfig(server.io);
-
-            for (build_config.modules.map.keys(), build_config.modules.map.values()) |root_file, mod| {
-                var imports_list: std.ArrayList(PackageGraphResult.ImportEntry) = .empty;
-                for (mod.import_table.map.keys(), mod.import_table.map.values()) |name, path| {
-                    try imports_list.append(arena, .{ .name = name, .path = path });
-                }
-                try modules_list.append(arena, .{
-                    .root_source_file = root_file,
-                    .imports = imports_list.items,
-                });
-            }
-
-            for (build_config.dependencies.map.keys(), build_config.dependencies.map.values()) |name, path| {
-                try deps_list.append(arena, .{ .name = name, .path = path });
-            }
-        }
-    }
-
-    return .{
-        .modules = modules_list.items,
-        .dependencies = deps_list.items,
-    };
-}
-
 fn handleSsr(server: *Server, arena: std.mem.Allocator, params_val: ?std.json.Value) Error!?types.WorkspaceEdit {
     const ssr = @import("features/ssr.zig");
     const val = params_val orelse return null;
@@ -1859,22 +1806,6 @@ fn executeCommandHandler(server: *Server, arena: std.mem.Allocator, params: type
         }
         return try toJsonValue(arena, result);
     }
-    if (std.mem.eql(u8, command, "xzls.viewPackageGraph")) {
-        const result = try server.handleViewPackageGraph(arena);
-        var aw: std.Io.Writer.Allocating = .init(arena);
-        defer aw.deinit();
-        aw.writer.print("[xzls] Package Graph: {d} modules, {d} dependencies\n", .{ result.modules.len, result.dependencies.len }) catch {};
-        for (result.dependencies) |dep| {
-            aw.writer.print("  • dep: {s} ({s})\n", .{ dep.name, dep.path }) catch {};
-        }
-        for (result.modules) |mod| {
-            aw.writer.print("  • root: {s}\n", .{ mod.root_source_file }) catch {};
-        }
-        if (aw.toOwnedSlice() catch null) |msg| {
-            server.showMessage(.Info, "{s}", .{msg});
-        }
-        return try toJsonValue(arena, result);
-    }
     if (std.mem.eql(u8, command, "xzls.ssr")) {
         const result = try server.handleSsr(arena, first_arg);
         return try toJsonValue(arena, result);
@@ -1897,10 +1828,6 @@ fn processMessage(server: *Server, arena: std.mem.Allocator, message: Message) E
                 }
                 if (std.mem.eql(u8, other.method, "xzls/viewComptime")) {
                     const result = try server.handleViewComptime(arena, other.params);
-                    return try server.sendToClientResponse(request.id, result);
-                }
-                if (std.mem.eql(u8, other.method, "xzls/viewPackageGraph")) {
-                    const result = try server.handleViewPackageGraph(arena);
                     return try server.sendToClientResponse(request.id, result);
                 }
                 if (std.mem.eql(u8, other.method, "xzls/ssr")) {
