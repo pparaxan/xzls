@@ -1,0 +1,53 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.17.0
+      - name: Test
+        run: zig build check test --summary all
+      - name: Build
+        run: zig build -Doptimize=ReleaseSafe
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xzls-${{ runner.os }}
+          path: zig-out/bin/xzls${{ runner.os == 'Windows' && '.exe' || '' }}
+          if-no-files-found: error
+          retention-days: 14
+  build-wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.17.0
+      - name: Build WASM
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=wasm32-wasi
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xzls-wasm
+          path: zig-out/bin/xzls.wasm
+          if-no-files-found: error
+          retention-days: 14
