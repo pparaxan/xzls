@@ -782,6 +782,7 @@ pub fn hoverWithOptions(
         .enum_literal => try hoverDefinitionEnumLiteral(analyser, arena, handle, source_index, markup_kind, offset_encoding, show_memory_layout),
         .number_literal, .char_literal => try hoverDefinitionNumberLiteral(arena, handle, source_index, markup_kind, offset_encoding),
         .comment => try hoverDocCommentLink(analyser, arena, handle, source_index, markup_kind, offset_encoding, show_memory_layout),
+        .import_string_literal => |loc| try hoverDefinitionImportString(analyser, arena, handle, loc, markup_kind, offset_encoding),
         else => null,
     };
 
@@ -808,5 +809,46 @@ fn hoverDocCommentLink(
             },
         },
         .range = offsets.locToRange(handle.tree.source, link_info.loc, offset_encoding),
+    };
+}
+
+fn hoverDefinitionImportString(
+    analyser: *Analyser,
+    arena: std.mem.Allocator,
+    handle: *DocumentStore.Handle,
+    loc: offsets.Loc,
+    markup_kind: types.MarkupKind,
+    offset_encoding: offsets.Encoding,
+) Analyser.Error!?types.Hover {
+    const import_str = offsets.locToSlice(handle.tree.source, loc);
+    const result = analyser.store.uriFromImportStr(arena, handle, import_str) catch return null;
+
+    const target_uri = switch (result) {
+        .one => |uri| uri,
+        .many => |uris| if (uris.len > 0) uris[0] else return null,
+        .none => return null,
+    };
+
+    const target_handle = (analyser.store.getOrLoadHandle(target_uri) catch return null) orelse return null;
+    const target_tree = &target_handle.tree;
+
+    const doc_comment = try Analyser.collectDocComments(arena, target_tree, 0, true);
+
+    const file_path = target_uri.toFsPath(arena) catch target_uri.raw;
+    const title = try std.fmt.allocPrint(arena, "### Module `{s}`\n*{s}*", .{ import_str, file_path });
+
+    const hover_content = if (doc_comment) |doc|
+        try std.fmt.allocPrint(arena, "{s}\n\n---\n{s}", .{ title, doc })
+    else
+        title;
+
+    return .{
+        .contents = .{
+            .markup_content = .{
+                .kind = markup_kind,
+                .value = hover_content,
+            },
+        },
+        .range = offsets.locToRange(handle.tree.source, loc, offset_encoding),
     };
 }
