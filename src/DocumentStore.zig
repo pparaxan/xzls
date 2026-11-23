@@ -142,6 +142,26 @@ pub const BuildFile = struct {
             }
         }
 
+        const target_path = uri.toFsPath(arena) catch null;
+        if (target_path) |tp| {
+            var best_match: ?[]const u8 = null;
+            var longest_common_dir: usize = 0;
+
+            for (module_root_source_file_paths.items) |root_source_file| {
+                const root_dir = std.Io.Dir.path.dirname(root_source_file) orelse continue;
+                if (std.mem.startsWith(u8, tp, root_dir)) {
+                    if (root_dir.len > longest_common_dir) {
+                        longest_common_dir = root_dir.len;
+                        best_match = root_source_file;
+                    }
+                }
+            }
+
+            if (best_match) |bm| {
+                return .{ .yes = try allocator.dupe(u8, bm) };
+            }
+        }
+
         return .no;
     }
 
@@ -1620,6 +1640,11 @@ pub fn uriFromImportStr(
 
         if (build_config.dependencies.map.get(import_str)) |path| {
             return .{ .one = try .fromPath(allocator, path) };
+        }
+        for (build_config.modules.map.values()) |mod| {
+            if (mod.import_table.map.get(import_str)) |path| {
+                return .{ .one = try .fromPath(allocator, path) };
+            }
         }
         return .none;
     }
