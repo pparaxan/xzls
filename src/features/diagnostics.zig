@@ -198,9 +198,10 @@ fn collectWarnStyleDiagnostics(
                 try diagnostics.append(arena, .{
                     .range = offsets.tokenToRange(tree, import_str_token, offset_encoding),
                     .severity = .Hint,
-                    .code = .{ .string = "dot_slash_import" },
-                    .source = "zls",
-                    .message = .{ .string = "A ./ is not needed in imports" },
+                    .source = "xzls",
+                    .message = .{
+                        .string = "`./` isn't needed in imports.",
+                    },
                 });
             }
         }
@@ -229,17 +230,19 @@ fn collectWarnStyleDiagnostics(
                             try diagnostics.append(arena, .{
                                 .range = offsets.tokenToRange(tree, name_token, offset_encoding),
                                 .severity = .Hint,
-                                .code = .{ .string = "bad_style" },
-                                .source = "zls",
-                                .message = .{ .string = "Functions should be camelCase" },
+                                .source = "xzls",
+                                .message = .{
+                                    .string = "Functions should be camelCase.",
+                                },
                             });
                         } else if (is_type_function and !isPascalCase(func_name)) {
                             try diagnostics.append(arena, .{
                                 .range = offsets.tokenToRange(tree, name_token, offset_encoding),
                                 .severity = .Hint,
-                                .code = .{ .string = "bad_style" },
-                                .source = "zls",
-                                .message = .{ .string = "Type functions should be PascalCase" },
+                                .source = "xzls",
+                                .message = .{
+                                    .string = "Type functions should be PascalCase.",
+                                },
                             });
                         }
                     }
@@ -287,9 +290,10 @@ fn collectGlobalVarDiagnostics(
                 try diagnostics.append(arena, .{
                     .range = offsets.tokenToRange(tree, decl_main_token, offset_encoding),
                     .severity = .Hint,
-                    .code = .{ .string = "highlight_global_var_declarations" },
-                    .source = "zls",
-                    .message = .{ .string = "Global var declaration" },
+                    .source = "xzls",
+                    .message = .{
+                        .string = "Global mutable variable. Consider using `const` if mutation is unnecessary.",
+                    },
                 });
             },
             else => {},
@@ -852,8 +856,12 @@ pub fn collectEagerSemanticDiagnostics(
                         .range = range,
                         .severity = .Error,
                         .code = null,
-                        .source = "xzls-eager",
-                        .message = .{ .string = try std.fmt.allocPrint(arena, "use of undeclared identifier '{s}'", .{name}) },
+                        .source = "xzls",
+                        .message = .{
+                            .string = try std.fmt.allocPrint(arena, "Use of the undeclared identifier '{s}'.", .{
+                                name,
+                            }),
+                        },
                     });
                 }
             },
@@ -884,8 +892,12 @@ pub fn collectEagerSemanticDiagnostics(
                                 .range = range,
                                 .severity = .Error,
                                 .code = null,
-                                .source = "xzls-eager",
-                                .message = .{ .string = try std.fmt.allocPrint(arena, "no member or method named '{s}' on type", .{member_name}) },
+                                .source = "xzls",
+                                .message = .{
+                                    .string = try std.fmt.allocPrint(arena, "No field or method named '{s}' exists on this type.", .{
+                                        member_name,
+                                    }),
+                                },
                             });
                         }
                     }
@@ -933,8 +945,13 @@ pub fn collectEagerSemanticDiagnostics(
                         .range = range,
                         .severity = .Error,
                         .code = null,
-                        .source = "xzls-eager",
-                        .message = .{ .string = try std.fmt.allocPrint(arena, "expected {d} argument(s), found {d}", .{ expected_count, actual_count }) },
+                        .source = "xzls",
+                        .message = .{
+                            .string = try std.fmt.allocPrint(arena, "Expected {d} argument(s), but found {d} argument(s).", .{
+                                expected_count,
+                                actual_count,
+                            }),
+                        },
                     });
                 }
             },
