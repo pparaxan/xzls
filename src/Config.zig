@@ -54,6 +54,9 @@ inlay_hints_hide_redundant_param_names_last_token: bool = false,
 /// Show memory layout (size, alignment, field offsets) in hover documentation
 hover_show_memory_layout: bool = true,
 
+/// Enables eager semantic diagnostics: XZLS will scan all function bodies (including unreachable ones) for unresolved identifiers and report them as diagnostics.
+eager_semantic_check: bool = true,
+
 /// Work around editors that do not support 'source.fixall' code actions on save. This option may deliver a substandard user experience. Please refer to the installation guide to see which editors natively support code actions on save.
 force_autofix: bool = false,
 
