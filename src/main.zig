@@ -349,7 +349,6 @@ fn loadConfigFromSystem(io: std.Io, allocator: std.mem.Allocator, environ_map: *
 
     const config_filenames = [_][]const u8{
         "xzls.json",
-        "zls.json",
     };
 
     for (
