@@ -1330,16 +1330,7 @@ fn generateXzlsCodeActions(
     const hover_args = try arena.alloc(std.json.Value, 1);
     hover_args[0] = hover_json;
 
-    // 1. Package Graph action
-    try builder.actions.append(arena, .{
-        .title = "xzls: View Package Graph",
-        .kind = .refactor,
-        .command = .{
-            .title = "View Package Graph",
-            .command = "xzls.viewPackageGraph",
-            .arguments = &.{},
-        },
-    });
+
 
     // 2. Try to resolve symbol / type at cursor
     var target_type: ?Analyser.Type = null;
