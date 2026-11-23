@@ -53,7 +53,6 @@ resolution, custom packages, and others. The following features are supported:
 * Code actions & autofix
 * Comptime inspection
 * Structural search & replace
-* Memory layout inspection
 
 And _wayy_ more.
 
