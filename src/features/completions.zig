@@ -503,6 +503,63 @@ fn completeLabel(builder: *Builder) error{OutOfMemory}!void {
     try Analyser.iterateLabels(builder.orig_handle, builder.source_index, labelDeclToCompletion, builder);
 }
 
+fn isInsideSwitchBody(tree: *const Ast, source_index: usize) bool {
+    const tok = offsets.sourceIndexToTokenIndex(tree, source_index).preferLeft();
+    var i: isize = @intCast(tok);
+    var braces_depth: i32 = 0;
+    while (i >= 0) : (i -= 1) {
+        const token_idx: Ast.TokenIndex = @intCast(i);
+        const tag = tree.tokenTag(token_idx);
+        switch (tag) {
+            .r_brace => braces_depth += 1,
+            .l_brace => {
+                braces_depth -= 1;
+                if (braces_depth < 0) {
+                    if (token_idx > 0 and tree.tokenTag(token_idx - 1) == .r_paren) {
+                        var p_depth: i32 = 0;
+                        var p: isize = @intCast(token_idx - 1);
+                        while (p >= 0) : (p -= 1) {
+                            const p_tok: Ast.TokenIndex = @intCast(p);
+                            switch (tree.tokenTag(p_tok)) {
+                                .r_paren => p_depth += 1,
+                                .l_paren => {
+                                    p_depth -= 1;
+                                    if (p_depth == 0) {
+                                        if (p_tok > 0 and tree.tokenTag(p_tok - 1) == .keyword_switch) {
+                                            return true;
+                                        }
+                                        break;
+                                    }
+                                },
+                                else => {},
+                            }
+                        }
+                    }
+                    return false;
+                }
+            },
+            else => {},
+        }
+    }
+    return false;
+}
+
+fn isDeclOrStatementContext(tree: *const Ast, source_index: usize) bool {
+    const tok = offsets.sourceIndexToTokenIndex(tree, source_index).preferLeft();
+    var i: isize = @intCast(tok);
+    while (i >= 0) : (i -= 1) {
+        const token_idx: Ast.TokenIndex = @intCast(i);
+        const tag = tree.tokenTag(token_idx);
+        switch (tag) {
+            .equal => return true,
+            .l_paren, .comma => return false,
+            .semicolon, .r_brace => return true,
+            else => {},
+        }
+    }
+    return true;
+}
+
 fn populateSnippedCompletions(builder: *Builder, kind: enum { generic, top_level }) error{OutOfMemory}!void {
     const items: []const snippets.Item = if (builder.use_snippets) switch (kind) {
         .generic => snippets.generic,
@@ -522,8 +579,20 @@ fn populateSnippedCompletions(builder: *Builder, kind: enum { generic, top_level
         });
     }
 
+    const inside_switch = isInsideSwitchBody(&builder.orig_handle.tree, builder.source_index);
+    const is_decl_stmt = isDeclOrStatementContext(&builder.orig_handle.tree, builder.source_index);
+
     for (std.zig.Token.keywords.keys(), std.zig.Token.keywords.values()) |name, tag| {
-        const keyword_snippet = if (builder.use_snippets) snippets.keywords.get(tag) else null;
+        const keyword_snippet = if (builder.use_snippets) blk: {
+            if (tag == .keyword_else and inside_switch) {
+                break :blk "else => {\n    $0\n},";
+            } else if (tag == .keyword_enum) {
+                break :blk if (is_decl_stmt) "enum {$0};" else "enum {$0}";
+            } else if (tag == .keyword_struct) {
+                break :blk if (is_decl_stmt) "struct {$0};" else "struct {$0}";
+            }
+            break :blk snippets.keywords.get(tag);
+        } else null;
         builder.completions.appendAssumeCapacity(.{
             .label = name,
             .kind = .Keyword,
@@ -1070,6 +1139,9 @@ fn completeDot(builder: *Builder, loc: offsets.Loc) Analyser.Error!void {
     const used_members_set = try collectUsedMembersSet(builder, dot_context.likely, dot_token_index);
     const containers = try collectContainerNodes(builder, builder.orig_handle, dot_context);
     for (containers) |container| {
+        if (dot_context.likely == .switch_case) {
+            try collectErrorSetNames(builder, container, used_members_set, false);
+        }
         try collectContainerFields(builder, dot_context.likely, container, used_members_set);
     }
 }
@@ -1089,7 +1161,7 @@ fn completeError(builder: *Builder, loc: offsets.Loc) Analyser.Error!void {
     const used_members_set = try collectUsedMembersSet(builder, dot_context.likely, dot_token_index);
     const containers = try collectContainerNodes(builder, builder.orig_handle, dot_context);
     for (containers) |container| {
-        try collectErrorSetNames(builder, container, used_members_set);
+        try collectErrorSetNames(builder, container, used_members_set, true);
     }
 }
 
@@ -1097,6 +1169,7 @@ fn collectErrorSetNames(
     builder: *Builder,
     container: Analyser.Type,
     omit_members: std.BufSet,
+    prefix_error: bool,
 ) Analyser.Error!void {
     const ip = builder.analyser.ip;
     const key = switch (container.data) {
@@ -1109,12 +1182,21 @@ fn collectErrorSetNames(
         const str = names.at(@intCast(idx), ip);
         const name = try builder.arena.print("{f}", .{str.fmt(ip.io, &ip.string_pool)});
         if (omit_members.contains(name)) continue;
-        try builder.completions.append(builder.arena, .{
-            .label = try builder.arena.print("error.{s}", .{name}),
-            .filterText = name,
-            .insertText = name,
-            .kind = .Constant,
-        });
+        if (prefix_error) {
+            try builder.completions.append(builder.arena, .{
+                .label = try builder.arena.print("error.{s}", .{name}),
+                .filterText = name,
+                .insertText = name,
+                .kind = .Constant,
+            });
+        } else {
+            try builder.completions.append(builder.arena, .{
+                .label = name,
+                .filterText = name,
+                .insertText = name,
+                .kind = .EnumMember,
+            });
+        }
     }
 }
 
