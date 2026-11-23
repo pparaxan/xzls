@@ -63,16 +63,6 @@ force_autofix: bool = false,
 /// Enables warnings for style guideline mismatches
 warn_style: bool = false,
 
-/// Enables eager semantic diagnostics: XZLS will scan all function bodies (including unreachable ones)
-/// for unresolved identifiers and report them as diagnostics. This catches more errors than the
-/// standard `zig ast-check` which only reports reachable code issues.
-/// Source tag: "xzls-eager"
-eager_semantic_check: bool = true,
-
-/// Enables auto-import on completion: when a completion item is selected that comes from an unimported
-/// file, XZLS inserts the missing `const <name> = @import("<file>");` at the top of the file.
-auto_import_on_completion: bool = true,
-
 /// Whether to highlight global var declarations
 highlight_global_var_declarations: bool = false,
 
