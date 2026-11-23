@@ -100,12 +100,10 @@ fn hoverSymbolWithType(
             .local_var_decl,
             .aligned_var_decl,
             .simple_var_decl,
-            => try Analyser.getVariableSignature(
-                arena,
-                tree,
-                tree.fullVarDecl(node).?,
-                true,
-            ),
+            => if (tree.fullVarDecl(node)) |vd|
+                try Analyser.getVariableSignature(arena, tree, vd, true)
+            else
+                offsets.nodeToSlice(tree, node),
             .container_field,
             .container_field_init,
             .container_field_align,
@@ -117,10 +115,13 @@ fn hoverSymbolWithType(
             .fn_decl,
             => def: {
                 var buf: [1]Ast.Node.Index = undefined;
-                const fn_proto = tree.fullFnProto(&buf, node).?;
-                break :def Analyser.getFunctionSignature(tree, fn_proto);
+                if (tree.fullFnProto(&buf, node)) |fn_proto| {
+                    break :def Analyser.getFunctionSignature(tree, fn_proto);
+                } else {
+                    break :def offsets.nodeToSlice(tree, node);
+                }
             },
-            else => unreachable,
+            else => offsets.nodeToSlice(tree, node),
         },
         .function_parameter => |payload| ast.paramSlice(tree, payload.get(tree).?, false),
         .optional_payload,
