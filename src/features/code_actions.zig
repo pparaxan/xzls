@@ -131,7 +131,7 @@ pub const Builder = struct {
 
         if (builder.fixall_text_edits.items.len != 0) {
             try builder.actions.append(builder.arena, .{
-                .title = "apply fixall",
+                .title = "Apply all available fixes.",
                 .kind = .@"source.fixAll",
                 .edit = try builder.createWorkspaceEdit(builder.fixall_text_edits.items),
             });
@@ -229,7 +229,7 @@ fn generateStringLiteralCodeActions(
 
     const loc = offsets.tokenToLoc(tree, token);
     try builder.actions.append(builder.arena, .{
-        .title = "convert to a multiline string literal",
+        .title = "Convert to a multiline string literal.",
         .kind = .refactor,
         .isPreferred = false,
         .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditLoc(loc, result.items)}),
@@ -287,7 +287,7 @@ fn generateMultilineStringCodeActions(
     const remove_loc: offsets.Loc = .{ .start = first_token_start, .end = last_token_end };
 
     try builder.actions.append(builder.arena, .{
-        .title = "convert to a string literal",
+        .title = "Convert to a regular string literal.",
         .kind = .refactor,
         .isPreferred = false,
         .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditLoc(remove_loc, str_escaped.items)}),
@@ -341,7 +341,7 @@ pub fn collectAutoDiscardDiagnostics(
                     .uri = handle.uri.raw,
                     .range = range,
                 },
-                .message = "variable declared here",
+                .message = "The variable was originally declared here.",
             }});
         };
 
@@ -349,8 +349,10 @@ pub fn collectAutoDiscardDiagnostics(
             .range = offsets.tokenToRange(tree, identifier_token, offset_encoding),
             .severity = .Information,
             .code = null,
-            .source = "zls",
-            .message = .{ .string = "auto discard for unused variable" },
+            .source = "xzls",
+            .message = .{
+                .string = "Unused variable is automatically discarded.",
+            },
             .relatedInformation = related_info,
         });
     }
@@ -369,7 +371,7 @@ fn handleNonCamelcaseFunction(builder: *Builder, loc: offsets.Loc) error{OutOfMe
     const new_text = try createCamelcaseText(builder.arena, identifier_name);
 
     try builder.actions.append(builder.arena, .{
-        .title = "make function name camelCase",
+        .title = "Convert function name to camelCase.",
         .kind = .quickfix,
         .isPreferred = true,
         .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditLoc(loc, new_text)}),
@@ -433,7 +435,7 @@ fn handleUnusedFunctionParameter(builder: *Builder, loc: offsets.Loc) error{OutO
     if (builder.wantKind(.quickfix)) {
         // TODO fix formatting
         try builder.actions.append(builder.arena, .{
-            .title = "remove function parameter",
+            .title = "Remove unused parameter.",
             .kind = .quickfix,
             .isPreferred = false,
             .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditLoc(getParamRemovalRange(tree, fn_proto_param), "")}),
@@ -478,7 +480,7 @@ fn handleUnusedVariableOrConstant(builder: *Builder, loc: offsets.Loc) error{Out
     if (builder.wantKind(.quickfix)) {
         // TODO add no `// autofix` comment
         try builder.actions.append(builder.arena, .{
-            .title = "discard value",
+            .title = "Discard unused value.",
             .kind = .quickfix,
             .isPreferred = true,
             .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditPos(insert_index, new_text)}),
@@ -511,7 +513,7 @@ fn handleUnusedCapture(
         const remove_cap_loc = builder.createTextEditLoc(capture_loc, "");
 
         try builder.actions.append(builder.arena, .{
-            .title = "discard capture name",
+            .title = "Replace unused capture with '_'",
             .kind = .quickfix,
             .isPreferred = false,
             .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditLoc(loc, "_")}),
@@ -522,7 +524,7 @@ fn handleUnusedCapture(
         const gop = try remove_capture_actions.getOrPut(builder.arena, remove_cap_loc.range);
         if (!gop.found_existing) {
             try builder.actions.append(builder.arena, .{
-                .title = "remove capture",
+                .title = "Remove unused capture.",
                 .kind = .quickfix,
                 .isPreferred = false,
                 .edit = try builder.createWorkspaceEdit(&.{remove_cap_loc}),
@@ -597,7 +599,7 @@ fn handlePointlessDiscard(builder: *Builder, loc: offsets.Loc) error{OutOfMemory
 
     if (builder.wantKind(.quickfix)) {
         try builder.actions.append(builder.arena, .{
-            .title = "remove pointless discard",
+            .title = "Remove unnecessary discard",
             .kind = .@"source.fixAll",
             .isPreferred = true,
             .edit = try builder.createWorkspaceEdit(&.{
@@ -634,7 +636,7 @@ fn handleVariableNeverMutated(builder: *Builder, loc: offsets.Loc) error{OutOfMe
     if (tree.tokenTag(var_token) != .keyword_var) return;
 
     try builder.actions.append(builder.arena, .{
-        .title = "use 'const'",
+        .title = "Replace 'var' with 'const'.",
         .kind = .quickfix,
         .isPreferred = true,
         .edit = try builder.createWorkspaceEdit(&.{
@@ -757,7 +759,7 @@ fn handleUnorganizedImport(builder: *Builder) error{OutOfMemory}!void {
     const workspace_edit = try builder.createWorkspaceEdit(edits.items);
 
     try builder.actions.append(builder.arena, .{
-        .title = "organize @import",
+        .title = "Organize `@import`?",
         .kind = .@"source.organizeImports",
         .isPreferred = true,
         .edit = workspace_edit,
@@ -1370,7 +1372,7 @@ fn generateXzlsCodeActions(
 
     // Comptime evaluation code action
     try builder.actions.append(arena, .{
-        .title = try std.fmt.allocPrint(arena, "xzls: View Comptime ('{s}')", .{name_str}),
+        .title = try std.fmt.allocPrint(arena, "View Comptime", .{}),
         .kind = .refactor,
         .command = .{
             .title = "View Comptime",
@@ -1423,14 +1425,14 @@ fn generateCodeActions(
         if (is_unreachable or is_empty_block) {
             const try_code = try std.fmt.allocPrint(arena, "try {s}", .{caught_slice});
             try builder.actions.append(arena, .{
-                .title = "Replace with 'try'",
+                .title = "Replace catch with 'try'",
                 .kind = .quickfix,
                 .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditLoc(catch_loc, try_code)}),
             });
 
             const panic_code = try std.fmt.allocPrint(arena, "{s} catch @panic(\"unhandled error\")", .{caught_slice});
             try builder.actions.append(arena, .{
-                .title = "Replace with '@panic'",
+                .title = "Replace catch with '@panic'",
                 .kind = .quickfix,
                 .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditLoc(catch_loc, panic_code)}),
             });
