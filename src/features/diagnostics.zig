@@ -1032,7 +1032,7 @@ fn collectDiagnostics(
     // Walk nodes for `suppressed-errors` and `unsafe-undefined`.
     var idx: usize = 0;
     while (idx < tree.nodes.len) : (idx += 1) {
-        const node_idx: Ast.Node.Index = @enumFromInt(idx);
+        const node_idx: Ast.Node.Index = @fromBackingInt(@intCast(idx));
         const tag = tree.nodeTag(node_idx);
 
         // Suppressed errors such as `catch {}`.
@@ -1137,7 +1137,7 @@ fn collectDiagnostics(
                             const start_idx = tree.tokenStart(mut_tok);
                             const line_start = std.mem.lastIndexOfScalar(u8, tree.source[0..start_idx], '\n') orelse 0;
                             const prev_line_start = if (line_start > 0)
-                                (std.mem.lastIndexOfScalar(u8, tree.source[0..line_start - 1], '\n') orelse 0)
+                                (std.mem.lastIndexOfScalar(u8, tree.source[0 .. line_start - 1], '\n') orelse 0)
                             else
                                 0;
                             const context_window = tree.source[prev_line_start..start_idx];

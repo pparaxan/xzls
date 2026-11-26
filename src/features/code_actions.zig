@@ -1309,7 +1309,6 @@ test getCaptureLoc {
     try std.testing.expect(getCaptureLoc("|    |", .{ .start = 1, .end = 6 }) == null);
 }
 
-
 fn generateXzlsCodeActions(
     builder: *Builder,
     range: types.Range,
@@ -1393,7 +1392,7 @@ fn generateCodeActions(
     var best_catch: ?Ast.Node.Index = null;
     var smallest_catch_span: usize = std.math.maxInt(usize);
     for (0..tree.nodes.len) |idx| {
-        const n: Ast.Node.Index = @enumFromInt(idx);
+        const n: Ast.Node.Index = @fromBackingInt(@intCast(idx));
         if (tree.nodeTag(n) == .@"catch") {
             const loc = offsets.nodeToLoc(tree, n);
             if (loc.start <= source_index and source_index <= loc.end) {
@@ -1441,7 +1440,7 @@ fn generateCodeActions(
 
     // Enclosing `var_decl` with `= undefined`
     for (0..tree.nodes.len) |idx| {
-        const n: Ast.Node.Index = @enumFromInt(idx);
+        const n: Ast.Node.Index = @fromBackingInt(@intCast(idx));
         if (tree.fullVarDecl(n)) |var_decl| {
             if (var_decl.ast.init_node.unwrap()) |init_node| {
                 if (tree.nodeTag(init_node) == .identifier and std.mem.eql(u8, offsets.tokenToSlice(tree, tree.nodeMainToken(init_node)), "undefined")) {
