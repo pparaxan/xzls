@@ -314,7 +314,7 @@ fn autofix(server: *Server, arena: std.mem.Allocator, handle: *DocumentStore.Han
     return builder.fixall_text_edits;
 }
 
-fn generateDiagnostics(server: *Server, handle: *DocumentStore.Handle) void {
+pub fn generateDiagnostics(server: *Server, handle: *DocumentStore.Handle) void {
     if (!server.client_capabilities.supports_publish_diagnostics) return;
     const do = struct {
         fn do(param_server: *Server, param_handle: *DocumentStore.Handle) std.Io.Cancelable!void {
@@ -552,6 +552,10 @@ fn initializeHandler(server: *Server, arena: std.mem.Allocator, request: types.I
             .selectionRangeProvider = .{ .bool = true },
             .workspaceSymbolProvider = .{ .bool = true },
             .workspace = .{
+                .fileOperations = .{
+                    .willRename = .{ .filters = &.{.{ .scheme = "file", .pattern = .{ .glob = "**" } }} },
+                    .didRename = .{ .filters = &.{.{ .scheme = "file", .pattern = .{ .glob = "**" } }} },
+                },
                 .workspaceFolders = .{
                     .supported = true,
                     .changeNotifications = .{ .bool = true },
@@ -1285,6 +1289,7 @@ const HandledRequestParams = union(enum) {
     @"callHierarchy/incomingCalls": types.call_hierarchy.IncomingCallsParams,
     @"callHierarchy/outgoingCalls": types.call_hierarchy.OutgoingCallsParams,
     @"workspace/executeCommand": types.workspace.execute_command.Params,
+    @"workspace/willRenameFiles": types.workspace.RenameFilesParams,
     other: lsp.MethodWithParams,
 };
 
@@ -1298,6 +1303,7 @@ const HandledNotificationParams = union(enum) {
     @"workspace/didChangeWatchedFiles": types.workspace.did_change_watched_files.Params,
     @"workspace/didChangeWorkspaceFolders": types.workspace.folders.DidChangeParams,
     @"workspace/didChangeConfiguration": types.workspace.configuration.did_change.Params,
+    @"workspace/didRenameFiles": types.workspace.RenameFilesParams,
     other: lsp.MethodWithParams,
 };
 
@@ -1308,6 +1314,7 @@ fn isBlockingMessage(msg: Message) bool {
         .request => |request| switch (request.params) {
             .initialize,
             .shutdown,
+            .@"workspace/willRenameFiles",
             => return true,
             .@"textDocument/willSaveWaitUntil",
             .@"textDocument/semanticTokens/full",
@@ -1348,6 +1355,7 @@ fn isBlockingMessage(msg: Message) bool {
             .@"workspace/didChangeWatchedFiles",
             .@"workspace/didChangeWorkspaceFolders",
             .@"workspace/didChangeConfiguration",
+            .@"workspace/didRenameFiles",
             => return true,
             .other => return false,
         },
@@ -1636,6 +1644,7 @@ pub fn sendRequestSync(server: *Server, arena: std.mem.Allocator, comptime metho
         .@"callHierarchy/incomingCalls" => try @import("features/call_hierarchy.zig").@"callHierarchy/incomingCalls"(server, arena, params),
         .@"callHierarchy/outgoingCalls" => try @import("features/call_hierarchy.zig").@"callHierarchy/outgoingCalls"(server, arena, params),
         .@"workspace/executeCommand" => try server.executeCommandHandler(arena, params),
+        .@"workspace/willRenameFiles" => try @import("features/file_operations.zig").willRename(server, arena, params),
         .other => return null,
     };
 }
@@ -1651,6 +1660,7 @@ pub fn sendNotificationSync(server: *Server, arena: std.mem.Allocator, comptime 
 
     return switch (@field(Params, method)) {
         .initialized => try server.initializedHandler(arena, params),
+        .@"workspace/didRenameFiles" => try @import("features/file_operations.zig").didRename(server, arena, params),
         .exit => try server.exitHandler(arena, params),
         .@"textDocument/didOpen" => try server.openDocumentHandler(arena, params),
         .@"textDocument/didChange" => try server.changeDocumentHandler(arena, params),

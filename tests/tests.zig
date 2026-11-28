@@ -10,6 +10,7 @@ comptime {
     // TODO Document Synchronization
 
     // LSP features
+    _ = @import("lsp_features/file_operations.zig");
     _ = @import("lsp_features/formatting.zig");
     _ = @import("lsp_features/build_imports.zig");
     _ = @import("lsp_features/call_hierarchy.zig");
