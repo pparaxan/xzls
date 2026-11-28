@@ -7,6 +7,14 @@ const io = std.testing.io;
 const allocator = std.testing.allocator;
 
 test "queued edits analyze the latest document state" {
+    try testQueuedEdits(false);
+}
+
+test "queued edits preserve request boundaries" {
+    try testQueuedEdits(true);
+}
+
+fn testQueuedEdits(with_request: bool) !void {
     const Context = @import("context.zig").Context;
     var context = try Context.init();
     defer context.deinit();
@@ -18,6 +26,7 @@ test "queued edits analyze the latest document state" {
         read_complete: std.Io.Event = .unset,
         published: std.Io.Event = .unset,
         publications: std.atomic.Value(usize) = .init(0),
+        expected_publications: usize,
 
         fn read(transport: *zls.lsp.Transport, task_io: std.Io, alloc: std.mem.Allocator) zls.lsp.Transport.ReadError![]u8 {
             const self: *@This() = @fieldParentPtr("transport", transport);
@@ -34,8 +43,8 @@ test "queued edits analyze the latest document state" {
         fn write(transport: *zls.lsp.Transport, task_io: std.Io, json: []const u8) zls.lsp.Transport.WriteError!void {
             const self: *@This() = @fieldParentPtr("transport", transport);
             if (std.mem.indexOf(u8, json, "textDocument/publishDiagnostics") != null) {
-                _ = self.publications.fetchAdd(1, .monotonic);
-                self.published.set(task_io);
+                const previous = self.publications.fetchAdd(1, .monotonic);
+                if (previous + 1 == self.expected_publications) self.published.set(task_io);
             }
         }
 
@@ -43,23 +52,30 @@ test "queued edits analyze the latest document state" {
             try self.read_complete.wait(task_io);
         }
     };
-    var messages: [3][]const u8 = undefined;
-    for (&messages, 1..) |*message, version| {
+    var messages: [4][]const u8 = undefined;
+    for (1..4) |version| {
         const source = try std.fmt.allocPrint(context.arena.allocator(), "{d}", .{version});
         const position = .{ .line = 0, .character = 14 + version };
-        message.* = try std.json.Stringify.valueAlloc(context.arena.allocator(), .{
+        messages[version - 1 + @intFromBool(with_request and version == 3)] = try std.json.Stringify.valueAlloc(context.arena.allocator(), .{
             .jsonrpc = "2.0",
             .method = "textDocument/didChange",
             .params = .{ .textDocument = .{ .uri = uri.raw, .version = version }, .contentChanges = .{.{ .range = .{ .start = position, .end = position }, .text = source }} },
         }, .{});
     }
-    var transport: Transport = .{ .messages = &messages };
+    if (with_request) messages[2] = try std.json.Stringify.valueAlloc(context.arena.allocator(), .{
+        .jsonrpc = "2.0",
+        .id = 42,
+        .method = "textDocument/hover",
+        .params = .{ .textDocument = .{ .uri = uri.raw }, .position = .{ .line = 0, .character = 6 } },
+    }, .{});
+    const expected_publications: usize = if (with_request) 2 else 1;
+    var transport: Transport = .{ .messages = messages[0..if (with_request) 4 else 3], .expected_publications = expected_publications };
     context.server.setTransport(&transport.transport);
     context.server.client_capabilities.supports_publish_diagnostics = true;
     context.server.wait_group.concurrent(io, Transport.waitForEdits, .{ &transport, io }) catch return error.SkipZigTest;
     try std.testing.expectError(error.EndOfStream, context.server.loop());
     try std.testing.expectEqualStrings("const value = \"123\";", context.server.document_store.getHandle(uri).?.tree.source);
-    try std.testing.expectEqual(@as(usize, 1), transport.publications.load(.monotonic));
+    try std.testing.expectEqual(expected_publications, transport.publications.load(.monotonic));
 }
 
 test "LSP lifecycle" {

@@ -41,7 +41,6 @@ status: Status = .uninitialized,
 
 // private fields
 wait_group: std.Io.Group = .init,
-defer_diagnostics: bool = false,
 ip: InternPool,
 /// Stores messages that should be displayed with `window/showMessage` once the server has been initialized.
 pending_show_messages: std.ArrayList(types.window.ShowMessageParams) = .empty,
@@ -316,7 +315,6 @@ fn autofix(server: *Server, arena: std.mem.Allocator, handle: *DocumentStore.Han
 }
 
 fn generateDiagnostics(server: *Server, handle: *DocumentStore.Handle) void {
-    if (server.defer_diagnostics) return;
     if (!server.client_capabilities.supports_publish_diagnostics) return;
     const do = struct {
         fn do(param_server: *Server, param_handle: *DocumentStore.Handle) std.Io.Cancelable!void {
@@ -1465,8 +1463,10 @@ fn loopUnbuffered(server: *Server) LoopError!void {
     }
 }
 
+const BufferedMessage = struct { arena: std.heap.ArenaAllocator.State, value: Message };
+
 const Incoming = union(enum) {
-    message: struct { arena: std.heap.ArenaAllocator.State, value: Message },
+    message: BufferedMessage,
     failure: LoopError,
 
     fn deinit(item: Incoming, allocator: std.mem.Allocator) void {
@@ -1508,6 +1508,42 @@ fn changeUri(message: Message) ?[]const u8 {
     return message.notification.params.@"textDocument/didChange".textDocument.uri;
 }
 
+fn coalesceChanges(server: *Server, incoming: *BufferedMessage, queue: *std.Io.Queue(Incoming), pending: *?Incoming) error{ OutOfMemory, Canceled }!void {
+    const uri = changeUri(incoming.value) orelse return;
+    var arena = incoming.arena.promote(server.allocator);
+    defer incoming.arena = arena.state;
+    const alloc = arena.allocator();
+    var changes: std.ArrayList(types.TextDocument.ContentChangeEvent) = .empty;
+    // Bound each batch so a continuously typing client cannot starve requests.
+    for (0..queue.capacity()) |_| {
+        var next: [1]Incoming = undefined;
+        const count = queue.get(server.io, &next, 0) catch |err| switch (err) {
+            error.Closed => 0,
+            error.Canceled => return error.Canceled,
+        };
+        if (count == 0) break;
+        if (next[0] != .message or !std.mem.eql(u8, uri, changeUri(next[0].message.value) orelse "")) {
+            pending.* = next[0];
+            break;
+        }
+        defer next[0].deinit(server.allocator);
+        const params = next[0].message.value.notification.params.@"textDocument/didChange";
+        if (changes.items.len == 0) try changes.appendSlice(alloc, incoming.value.notification.params.@"textDocument/didChange".contentChanges);
+        for (params.contentChanges) |change| {
+            const copy: types.TextDocument.ContentChangeEvent = switch (change) {
+                inline else => |value, tag| blk: {
+                    var cloned = value;
+                    cloned.text = try alloc.dupe(u8, value.text);
+                    break :blk @unionInit(types.TextDocument.ContentChangeEvent, @tagName(tag), cloned);
+                },
+            };
+            try changes.append(alloc, copy);
+        }
+        incoming.value.notification.params.@"textDocument/didChange".textDocument.version = params.textDocument.version;
+    }
+    if (changes.items.len > 0) incoming.value.notification.params.@"textDocument/didChange".contentChanges = changes.items;
+}
+
 /// Keep receiving edits while analysis runs, then analyze the latest queued
 /// document state. Requests and document boundaries retain their original order.
 pub fn loop(server: *Server) LoopError!void {
@@ -1522,7 +1558,6 @@ pub fn loop(server: *Server) LoopError!void {
         while (queue.getOneUncancelable(server.io)) |item| item.deinit(server.allocator) else |_| {}
     }
     defer server.wait_group.cancel(server.io);
-    defer server.defer_diagnostics = false;
     var pending: ?Incoming = null;
     defer if (pending) |item| item.deinit(server.allocator);
     while (server.keepRunning()) {
@@ -1531,29 +1566,14 @@ pub fn loop(server: *Server) LoopError!void {
             error.Canceled => return error.Canceled,
         };
         pending = null;
-        var transferred = false;
-        defer if (!transferred) item.deinit(server.allocator);
         if (item == .failure) return item.failure;
-        const incoming = item.message;
+        var incoming = item.message;
+        var transferred = false;
+        defer if (!transferred) incoming.arena.promote(server.allocator).deinit();
         if (isBlockingMessage(incoming.value)) {
-            defer server.defer_diagnostics = false;
             try server.wait_group.await(server.io);
             server.wait_group = .init;
-            if (changeUri(incoming.value)) |uri| {
-                var next: [1]Incoming = undefined;
-                const count = queue.get(server.io, &next, 0) catch |err| switch (err) {
-                    error.Closed => 0,
-                    error.Canceled => return error.Canceled,
-                };
-                if (count == 1) {
-                    pending = next[0];
-                    if (next[0] == .message) {
-                        if (changeUri(next[0].message.value)) |next_uri| {
-                            server.defer_diagnostics = std.mem.eql(u8, uri, next_uri);
-                        }
-                    }
-                }
-            }
+            try coalesceChanges(server, &incoming, &queue, &pending);
             transferred = true;
             try server.processMessageReportError(incoming.arena, incoming.value);
         } else {
