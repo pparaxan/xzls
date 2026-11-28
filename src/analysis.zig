@@ -5720,7 +5720,7 @@ pub fn getPositionContext(
     }
 
     // Include the callee when completing a call whose closing parenthesis
-    // starts a new line. Adapted from zigscient's multiline-call completion.
+    // starts a new line.
     if (std.mem.startsWith(u8, std.mem.trimStart(u8, offsets.locToSlice(tree.source, line_loc), " \t\r"), ").")) {
         var token = offsets.sourceIndexToTokenIndex(tree, line_loc.start).preferRight(tree);
         var depth: usize = 0;
