@@ -116,7 +116,7 @@ fn hoverSymbolWithType(
             => def: {
                 var buf: [1]Ast.Node.Index = undefined;
                 if (tree.fullFnProto(&buf, node)) |fn_proto| {
-                    break :def Analyser.getFunctionSignature(tree, fn_proto);
+                    break :def try Analyser.getFunctionSignatureUnindented(arena, tree, fn_proto);
                 } else {
                     break :def offsets.nodeToSlice(tree, node);
                 }

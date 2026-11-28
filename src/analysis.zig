@@ -169,6 +169,27 @@ pub fn getFunctionSignature(tree: *const Ast, func: Ast.full.FnProto) []const u8
     return offsets.tokensToSlice(tree, first_token, last_token);
 }
 
+/// Remove the declaration's surrounding indentation from continuation lines.
+pub fn getFunctionSignatureUnindented(allocator: std.mem.Allocator, tree: *const Ast, func: Ast.full.FnProto) error{OutOfMemory}![]const u8 {
+    const signature = getFunctionSignature(tree, func);
+    const start = tree.tokenStart(func.ast.fn_token);
+    const line_start = if (std.mem.lastIndexOfScalar(u8, tree.source[0..start], '\n')) |i| i + 1 else 0;
+    var indentation: usize = 0;
+    while (line_start + indentation < start and tree.source[line_start + indentation] == ' ') : (indentation += 1) {}
+    if (indentation == 0 or std.mem.indexOfScalar(u8, signature, '\n') == null) return signature;
+    var output: std.ArrayList(u8) = .empty;
+    errdefer output.deinit(allocator);
+    var lines = std.mem.splitScalar(u8, signature, '\n');
+    try output.appendSlice(allocator, lines.next().?);
+    while (lines.next()) |line| {
+        var remove: usize = 0;
+        while (remove < @min(indentation, line.len) and line[remove] == ' ') : (remove += 1) {}
+        try output.append(allocator, '\n');
+        try output.appendSlice(allocator, line[remove..]);
+    }
+    return output.toOwnedSlice(allocator);
+}
+
 pub const FormatParameterOptions = struct {
     referenced: ?*ReferencedType.Set = null,
     info: Type.Data.Parameter,
