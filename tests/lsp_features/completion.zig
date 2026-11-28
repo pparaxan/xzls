@@ -3754,6 +3754,17 @@ test "nested completions survive a missing semicolon" {
 
 test "incomplete fields preserve nested container completions" {
     try testCompletion(
+        \\const S = struct { alpha: u32, beta: u32 };
+        \\fn build() void {
+        \\    const value = S{ .alpha = };
+        \\    const other: S = undefined;
+        \\    other.<cursor>
+        \\}
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+        .{ .label = "beta", .kind = .Field, .detail = "u32" },
+    });
+    try testCompletion(
         \\const Outer = struct {
         \\    const Inner = struct {
         \\        const Options = struct { use_llvm: bool = false, use_lld: bool = false };

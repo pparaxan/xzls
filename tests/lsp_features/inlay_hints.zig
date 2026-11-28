@@ -24,6 +24,18 @@ test "incomplete struct fields preserve surrounding hints" {
         \\    const after<comptime_int> = 2;
         \\}
     , .{ .kind = .Type });
+    for ([_][]const u8{ ".value =", ".value = .", ".value,", ".value = ,", ".value, .value<u32> = 1", ".value = , .value<u32> = 1" }) |fields| {
+        const source = try std.fmt.allocPrint(allocator,
+            \\const S<type> = struct {{ value: u32 }};
+            \\fn build() void {{
+            \\    const before<comptime_int> = 1;
+            \\    const partial = S{{ {s} }};
+            \\    const after<comptime_int> = 2;
+            \\}}
+        , .{fields});
+        defer allocator.free(source);
+        try testInlayHints(source, .{ .kind = .Type });
+    }
 }
 
 test "explicit initializer types do not need type hints" {

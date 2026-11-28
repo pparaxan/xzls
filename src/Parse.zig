@@ -2668,26 +2668,36 @@ fn parseBlockLabel(p: *Parse) ?TokenIndex {
 
 fn parseFieldInit(p: *Parse) !?Node.Index {
     p.incomplete_field = false;
-    if (p.eatTokens(&.{ .period, .identifier, .equal })) |_| {
-        if (p.recover and p.tokenTag(p.tok_i) == .r_brace) {
-            try p.warn(.expected_expr);
-            p.incomplete_field = true;
-            return null;
+    while (true) {
+        if (p.eatTokens(&.{ .period, .identifier, .equal })) |_| {
+            if (p.recover and p.tokenTag(p.tok_i) == .period and p.tokenTag(p.tok_i + 1) == .r_brace) {
+                try p.warn(.expected_expr);
+                p.incomplete_field = true;
+                p.tok_i += 1;
+                return null;
+            }
+            if (p.recover and (p.tokenTag(p.tok_i) == .r_brace or p.tokenTag(p.tok_i) == .comma)) {
+                try p.warn(.expected_expr);
+                p.incomplete_field = true;
+                if (p.eatToken(.comma) != null) continue;
+                return null;
+            }
+            return try p.expectExpr();
         }
-        return try p.expectExpr();
-    }
-    if (p.recover and p.tokenTag(p.tok_i) == .period) {
-        const start = p.tok_i;
-        _ = p.nextToken();
-        _ = p.eatToken(.identifier);
-        if (p.tokenTag(p.tok_i) == .r_brace) {
-            try p.warn(.expected_initializer);
-            p.incomplete_field = true;
-            return null;
+        if (p.recover and p.tokenTag(p.tok_i) == .period) {
+            const start = p.tok_i;
+            _ = p.nextToken();
+            _ = p.eatToken(.identifier);
+            if (p.tokenTag(p.tok_i) == .r_brace or p.tokenTag(p.tok_i) == .comma) {
+                try p.warn(.expected_initializer);
+                p.incomplete_field = true;
+                if (p.eatToken(.comma) != null) continue;
+                return null;
+            }
+            p.tok_i = start;
         }
-        p.tok_i = start;
+        return null;
     }
-    return null;
 }
 
 fn expectFieldInit(p: *Parse) !?Node.Index {
