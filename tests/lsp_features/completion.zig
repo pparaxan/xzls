@@ -3702,6 +3702,17 @@ test "either" {
     });
 }
 
+test "zeroInit partial initializer fields" {
+    try testCompletion(
+        \\const std = @import("std");
+        \\const S = struct { alpha: u32, beta: bool };
+        \\const value = std.mem.zeroInit(S, .{ .<cursor> });
+    , &.{
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+        .{ .label = "beta", .kind = .Field, .detail = "bool" },
+    });
+}
+
 test "either - fields and methods with same name" {
     try testCompletionWithOptions(
         \\const Foo = struct {

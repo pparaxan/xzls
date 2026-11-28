@@ -2185,6 +2185,33 @@ fn collectContainerNodes(
     switch (handle.tree.nodeTag(nodes[0])) {
         .field_access => {
             if (try builder.analyser.resolveTypeOfNode(.of(nodes[0], handle))) |ty| {
+                if (ty.isFunc() and dot_context.fn_arg_index == 1 and
+                    std.mem.eql(u8, ty.data.function.name orelse "", "zeroInit") and
+                    std.mem.endsWith(u8, ty.data.function.handle.uri.raw, "/std/mem.zig"))
+                {
+                    for (nodes[1..]) |ancestor| {
+                        var buffer: [1]Ast.Node.Index = undefined;
+                        const call = handle.tree.fullCall(&buffer, ancestor) orelse continue;
+                        if (call.ast.fn_expr != nodes[0] or call.ast.params.len == 0) continue;
+                        if (try builder.analyser.resolveTypeOfNode(.of(call.ast.params[0], handle))) |target| {
+                            _ = try target.getAllTypesWithHandlesArraySet(builder.analyser, &types_with_handles);
+                            return types_with_handles.keys();
+                        }
+                    }
+                    // An unfinished initializer may make the parser drop the
+                    // enclosing call, while preserving its argument nodes.
+                    const first_arg_token = ast.lastToken(&handle.tree, nodes[0]) + 2;
+                    if (first_arg_token < handle.tree.tokens.len) {
+                        const argument_nodes = try ast.nodesOverlappingIndexIncludingParseErrors(gpa, &handle.tree, handle.tree.tokenStart(first_arg_token));
+                        defer gpa.free(argument_nodes);
+                        if (argument_nodes.len > 0) {
+                            if (try builder.analyser.resolveTypeOfNode(.of(argument_nodes[0], handle))) |target| {
+                                _ = try target.getAllTypesWithHandlesArraySet(builder.analyser, &types_with_handles);
+                                return types_with_handles.keys();
+                            }
+                        }
+                    }
+                }
                 try collectFieldAccessTypes(builder, dot_context, ty, &types_with_handles);
                 return types_with_handles.keys();
             }
