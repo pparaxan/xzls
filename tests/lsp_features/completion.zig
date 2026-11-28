@@ -2961,9 +2961,8 @@ test "continue with label - structinit" {
         \\    .alpha => continue :blk .{ .<cursor> }
         \\};
     , &.{
-        // TODO this should have the following completion items
-        // .{ .label = "alpha", .kind = .Field, .detail = "u32" },
-        // .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
+        .{ .label = "alpha", .kind = .Field, .detail = "u32" },
+        .{ .label = "beta", .kind = .Field, .detail = "[]const u8" },
     });
     try testCompletion(
         \\const U = union(enum) {
@@ -3700,6 +3699,30 @@ test "either" {
         .{ .label = "alpha", .kind = .Function, .detail = "fn (_: Alpha) void" },
         .{ .label = "beta", .kind = .Function, .detail = "fn (_: Beta) void" },
     });
+}
+
+test "incomplete fields preserve nested container completions" {
+    try testCompletion(
+        \\const Outer = struct {
+        \\    const Inner = struct {
+        \\        const Options = struct { use_llvm: bool = false, use_lld: bool = false };
+        \\        fn addTest(_: Options) void {}
+        \\        fn build() void {
+        \\            addTest(.{ .use_llvm = true, .use_l<cursor> });
+        \\        }
+        \\    };
+        \\};
+    , &.{.{ .label = "use_lld", .kind = .Field, .detail = "bool = false" }});
+    try testCompletion(
+        \\const Outer = struct {
+        \\    const Inner = struct {
+        \\        const Value = struct { alpha: u32 };
+        \\        fn build() void {
+        \\            const value = Value{ .<cursor> };
+        \\        }
+        \\    };
+        \\};
+    , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
 }
 
 test "multiline call result field access" {

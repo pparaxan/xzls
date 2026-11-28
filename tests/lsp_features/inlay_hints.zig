@@ -15,6 +15,17 @@ test "empty" {
     try testInlayHints("", .{ .kind = .Type });
 }
 
+test "incomplete struct fields preserve surrounding hints" {
+    try testInlayHints(
+        \\const S<type> = struct { value: u32 };
+        \\fn build() void {
+        \\    const before<comptime_int> = 1;
+        \\    const partial = S{ .value };
+        \\    const after<comptime_int> = 2;
+        \\}
+    , .{ .kind = .Type });
+}
+
 test "explicit initializer types do not need type hints" {
     try testInlayHints(
         \\const v = SomeType{};

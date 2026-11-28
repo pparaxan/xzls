@@ -13,6 +13,68 @@ const Ast = std.zig.Ast;
 const Node = Ast.Node;
 const full = Ast.full;
 
+/// Parse incomplete editor buffers without dropping surrounding declarations.
+pub fn parse(allocator: std.mem.Allocator, source: [:0]const u8, options: Ast.ParseOptions) error{OutOfMemory}!Ast {
+    if (options.mode == .zon) return Ast.parse(allocator, source, options);
+    var original = try Ast.parse(allocator, source, options);
+    errdefer original.deinit(allocator);
+    if (original.errors.len == 0) return original;
+    var parser: @import("Parse.zig") = .{
+        .source = source,
+        .gpa = allocator,
+        .tokens = original.tokens,
+        .errors = .empty,
+        .nodes = .empty,
+        .extra_data = .empty,
+        .scratch = .empty,
+        .tok_i = 0,
+        .recover = options.recover,
+    };
+    defer parser.errors.deinit(allocator);
+    defer parser.nodes.deinit(allocator);
+    defer parser.extra_data.deinit(allocator);
+    defer parser.scratch.deinit(allocator);
+    try parser.nodes.ensureTotalCapacity(allocator, (original.tokens.len + 2) / 2);
+    try parser.parseRoot();
+    try parser.extra_data.shrinkToLen(allocator);
+    try parser.errors.shrinkToLen(allocator);
+    var recovered: Ast = .{
+        .source = source,
+        .mode = options.mode,
+        .tokens = original.tokens,
+        .nodes = parser.nodes.toOwnedSlice(),
+        .extra_data = parser.extra_data.toOwnedSliceAssert(),
+        .errors = parser.errors.toOwnedSliceAssert(),
+    };
+    // Both parses share the immutable token stream until a winner is chosen.
+    errdefer {
+        recovered.tokens = .empty;
+        recovered.deinit(allocator);
+    }
+    if (try countDeclarations(allocator, &recovered) <= try countDeclarations(allocator, &original)) {
+        recovered.tokens = .empty;
+        recovered.deinit(allocator);
+        return original;
+    }
+    original.tokens = .empty;
+    original.deinit(allocator);
+    return recovered;
+}
+
+fn countDeclarations(allocator: std.mem.Allocator, tree: *const Ast) error{OutOfMemory}!usize {
+    var walker = try Walker.init(allocator, tree, .root);
+    defer walker.deinit(allocator);
+    var count: usize = 0;
+    while (try walker.next(allocator, tree)) |event| switch (event) {
+        .open => |node| switch (tree.nodeTag(node)) {
+            .fn_decl, .global_var_decl, .local_var_decl, .simple_var_decl, .aligned_var_decl => count += 1,
+            else => {},
+        },
+        .close => {},
+    };
+    return count;
+}
+
 fn fullPtrTypeComponents(tree: *const Ast, info: full.PtrType.Components) full.PtrType {
     const size: std.lang.Type.Pointer.Size = switch (tree.tokenTag(info.main_token)) {
         .asterisk => .one,
