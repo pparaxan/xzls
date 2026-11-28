@@ -59,6 +59,9 @@ fn gotoDefinitionSymbol(
         .type_definition => blk: {
             if (try decl_handle.resolveType(analyser)) |ty| {
                 var resolved_ty = ty;
+                if (try analyser.resolveFuncProtoOfCallable(resolved_ty)) |function| {
+                    resolved_ty = function.data.function.return_value.*;
+                }
                 while (true) {
                     resolved_ty =
                         try analyser.resolveUnwrapErrorUnionType(resolved_ty, .payload) orelse

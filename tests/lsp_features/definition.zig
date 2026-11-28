@@ -41,6 +41,13 @@ test "global variable" {
     );
 }
 
+test "function type definition follows return type" {
+    try testDefinition(
+        \\const S = <tdef>struct</tdef> {};
+        \\fn <def><decl><>make</decl></def>() ?S { return null; }
+    );
+}
+
 test "local variable" {
     try testDefinition(
         \\comptime {
@@ -146,9 +153,9 @@ test "decl literal pointer" {
         \\}
     );
     try testDefinition(
-        \\const S = struct {
+        \\const S = <tdef>struct</tdef> {
         \\    const value: S = .{};
-        \\    <tdef>fn</tdef> <def><decl>pointerFn</decl></def>() *const S {
+        \\    fn <def><decl>pointerFn</decl></def>() *const S {
         \\        return &value;
         \\    }
         \\};
@@ -271,7 +278,7 @@ test "multiline builder pattern" {
         \\    fn add(foo: Foo) Foo {}
         \\    fn remove(foo: Foo) Foo {}
         \\    fn process(foo: Foo) Foo {}
-        \\    <tdef>fn</tdef> <def><decl>finalize</decl></def>(_: Foo) void {}
+        \\    fn <def><decl>finalize</decl></def>(_: Foo) void {}
         \\};
         \\test {
         \\    var builder = Foo{};
