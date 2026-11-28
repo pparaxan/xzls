@@ -14,6 +14,33 @@ test "none" {
     try testDiagnostics("", &.{}, .{});
 }
 
+test "syntax diagnostics clear after multiline uncomment" {
+    var context: Context = try .init();
+    defer context.deinit();
+    context.server.client_capabilities.supports_publish_diagnostics = true;
+    const uri = try context.addDocument(.{ .source =
+        \\fn first() void {
+        \\//    _ = 1;
+        \\//}
+        \\fn second() void {}
+    });
+    const handle = context.server.document_store.getHandle(uri).?;
+    try std.testing.expect(handle.tree.errors.len > 0);
+    try zls.diagnostics.generateDiagnostics(context.server, handle);
+    const restored = try zls.diff.applyContentChanges(allocator, handle.tree.source, &.{
+        .{ .text_document_content_change_partial = .{
+            .range = .{ .start = .{ .line = 1, .character = 0 }, .end = .{ .line = 3, .character = 0 } },
+            .text = "    _ = 1;\n}\n",
+        } },
+    }, .@"utf-8");
+    try context.server.document_store.refreshLspSyncedDocument(uri, restored);
+    try std.testing.expectEqual(@as(usize, 0), handle.tree.errors.len);
+    try zls.diagnostics.generateDiagnostics(context.server, handle);
+    var actual: std.ArrayList(types.Diagnostic) = .empty;
+    try context.server.diagnostics_collection.collectLspDiagnosticsForDocumentTesting(uri, .@"utf-8", context.arena.allocator(), &actual);
+    try std.testing.expectEqual(@as(usize, 0), actual.items.len);
+}
+
 test "ast error" {
     try testDiagnostics(
         \\const foo
