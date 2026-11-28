@@ -217,6 +217,58 @@ fn generateSchemaFile(
     try file_writer.end();
 }
 
+fn writeKeywordData(allocator: std.mem.Allocator, writer: *std.Io.Writer, langref_source: []const u8) !void {
+    if (std.mem.indexOf(u8, langref_source, "{#header_open|Keyword Reference#}")) |start| {
+        try writer.writeAll("pub const keywords: std.StaticStringMap([]const u8) = .initComptime(.{\n");
+        const section = langref_source[start..];
+        var rows = std.mem.splitSequence(u8, section, "<tr>");
+        _ = rows.next();
+        while (rows.next()) |row| {
+            const row_end = std.mem.indexOf(u8, row, "</tr>") orelse break;
+            const content = row[0..row_end];
+            const name_start = (std.mem.indexOf(u8, content, "{#syntax#}") orelse continue) + "{#syntax#}".len;
+            const name_end = std.mem.indexOfPos(u8, content, name_start, "{#endsyntax#}") orelse continue;
+            const name = content[name_start..name_end];
+            if (!std.zig.Token.keywords.has(name)) continue;
+            const description_start = (std.mem.indexOf(u8, content, "<td>") orelse continue) + 4;
+            const description_end = std.mem.indexOfPos(u8, content, description_start, "<ul>") orelse
+                std.mem.indexOfPos(u8, content, description_start, "</td>") orelse continue;
+            const description = content[description_start..description_end];
+            var markdown: std.Io.Writer.Allocating = .init(allocator);
+            defer markdown.deinit();
+            var i: usize = 0;
+            var space = false;
+            while (i < description.len) {
+                if (std.ascii.isWhitespace(description[i])) {
+                    space = markdown.written().len > 0;
+                    i += 1;
+                    continue;
+                }
+                if (space) try markdown.writer.writeByte(' ');
+                space = false;
+                if (std.mem.startsWith(u8, description[i..], "{#")) {
+                    const end = std.mem.indexOfPos(u8, description, i + 2, "#}") orelse break;
+                    const tag = description[i + 2 .. end];
+                    if (std.mem.eql(u8, tag, "syntax") or std.mem.eql(u8, tag, "endsyntax")) {
+                        try markdown.writer.writeByte('`');
+                    } else if (std.mem.lastIndexOfScalar(u8, tag, '|')) |separator| {
+                        try markdown.writer.writeAll(tag[separator + 1 ..]);
+                    }
+                    i = end + 2;
+                } else if (description[i] == '<') {
+                    i = (std.mem.indexOfScalarPos(u8, description, i, '>') orelse break) + 1;
+                } else {
+                    try markdown.writer.writeByte(description[i]);
+                    i += 1;
+                }
+            }
+            try writer.print("    .{{ \"{f}\", \"{f}\" }},\n", .{ std.zig.fmtString(name), std.zig.fmtString(std.mem.trim(u8, markdown.written(), " \t\r\n")) });
+            if (std.mem.indexOf(u8, row, "{#header_close#}")) |_| break;
+        }
+        try writer.writeAll("});\n");
+    }
+}
+
 const ConfigurationProperty = struct {
     scope: []const u8 = "resource",
     type: []const u8,
@@ -986,6 +1038,7 @@ fn generateVersionDataFile(
         \\// DO NOT EDIT
         \\
     );
+    try writeKeywordData(allocator, writer, langref_source);
     try file_writer.end();
 }
 

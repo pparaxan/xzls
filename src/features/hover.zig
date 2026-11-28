@@ -17,6 +17,13 @@ const data = @import("version_data");
 
 pub const Error = Analyser.Error || error{InvalidParams};
 
+test "keyword documentation comes from the language reference" {
+    try std.testing.expectEqualStrings("The boolean operator `and`.", data.keywords.get("and").?);
+    for (data.keywords.values()) |documentation| {
+        try std.testing.expect(std.mem.indexOf(u8, documentation, "{#") == null);
+    }
+}
+
 fn hoverSymbol(
     analyser: *Analyser,
     arena: std.mem.Allocator,
@@ -771,6 +778,17 @@ pub fn hoverWithOptions(
     const old_resolve_number_literal_values = analyser.resolve_number_literal_values;
     analyser.resolve_number_literal_values = true;
     defer analyser.resolve_number_literal_values = old_resolve_number_literal_values;
+
+    const keyword_token = offsets.sourceIndexToTokenIndex(&handle.tree, source_index).preferRight(&handle.tree);
+    const keyword_loc = offsets.tokenToLoc(&handle.tree, keyword_token);
+    if (source_index >= keyword_loc.start and source_index < keyword_loc.end) {
+        if (data.keywords.get(offsets.locToSlice(handle.tree.source, keyword_loc))) |documentation| {
+            return .{
+                .contents = .{ .markup_content = .{ .kind = markup_kind, .value = documentation } },
+                .range = offsets.locToRange(handle.tree.source, keyword_loc, offset_encoding),
+            };
+        }
+    }
 
     const pos_context = try Analyser.getPositionContext(arena, &handle.tree, source_index, true);
 
