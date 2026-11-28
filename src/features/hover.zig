@@ -853,10 +853,10 @@ fn hoverDefinitionImportString(
     const doc_comment = try Analyser.collectDocComments(arena, target_tree, 0, true);
 
     const file_path = target_uri.toFsPath(arena) catch target_uri.raw;
-    const title = try std.fmt.allocPrint(arena, "### Module `{s}`\n*{s}*", .{ import_str, file_path });
+    const title = try arena.print("### Module `{s}`\n*{s}*", .{ import_str, file_path });
 
     const hover_content = if (doc_comment) |doc|
-        try std.fmt.allocPrint(arena, "{s}\n\n---\n{s}", .{ title, doc })
+        try arena.print("{s}\n\n---\n{s}", .{ title, doc })
     else
         title;
 

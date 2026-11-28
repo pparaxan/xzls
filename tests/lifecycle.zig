@@ -54,7 +54,7 @@ fn testQueuedEdits(with_request: bool) !void {
     };
     var messages: [4][]const u8 = undefined;
     for (1..4) |version| {
-        const source = try std.fmt.allocPrint(context.arena.allocator(), "{d}", .{version});
+        const source = try context.arena.allocator().print("{d}", .{version});
         const position = .{ .line = 0, .character = 14 + version };
         messages[version - 1 + @intFromBool(with_request and version == 3)] = try std.json.Stringify.valueAlloc(context.arena.allocator(), .{
             .jsonrpc = "2.0",

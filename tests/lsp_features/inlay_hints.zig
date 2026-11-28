@@ -25,7 +25,7 @@ test "incomplete struct fields preserve surrounding hints" {
         \\}
     , .{ .kind = .Type });
     for ([_][]const u8{ ".value =", ".value = .", ".value,", ".value = ,", ".value, .value<u32> = 1", ".value = , .value<u32> = 1" }) |fields| {
-        const source = try std.fmt.allocPrint(allocator,
+        const source = try allocator.print(
             \\const S<type> = struct {{ value: u32 }};
             \\fn build() void {{
             \\    const before<comptime_int> = 1;

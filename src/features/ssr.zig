@@ -56,7 +56,7 @@ pub fn normalizePattern(arena: std.mem.Allocator, pattern: []const u8) ![]const 
 
 pub fn parsePattern(arena: std.mem.Allocator, normalized: []const u8) !struct { Ast, Ast.Node.Index } {
     // 1. Try wrapping as expression: fn __ssr__() void { _ = <expr>; }
-    const wrapped_expr = try std.fmt.allocPrint(arena, "fn __ssr__() void {{ _ = {s}; }}\x00", .{normalized});
+    const wrapped_expr = try arena.print("fn __ssr__() void {{ _ = {s}; }}\x00", .{normalized});
     var tree = try Ast.parse(arena, wrapped_expr[0 .. wrapped_expr.len - 1 :0], .{ .mode = .zig });
     if (tree.errors.len == 0) {
         for (1..tree.nodes.len) |idx| {
@@ -69,7 +69,7 @@ pub fn parsePattern(arena: std.mem.Allocator, normalized: []const u8) !struct { 
     }
 
     // 2. Try wrapping as statement: fn __ssr__() void { <stmt>; }
-    const wrapped_stmt = try std.fmt.allocPrint(arena, "fn __ssr__() void {{\n{s};\n}}\x00", .{normalized});
+    const wrapped_stmt = try arena.print("fn __ssr__() void {{\n{s};\n}}\x00", .{normalized});
     tree = try Ast.parse(arena, wrapped_stmt[0 .. wrapped_stmt.len - 1 :0], .{ .mode = .zig });
     if (tree.errors.len == 0) {
         for (1..tree.nodes.len) |idx| {
@@ -82,7 +82,7 @@ pub fn parsePattern(arena: std.mem.Allocator, normalized: []const u8) !struct { 
     }
 
     // 3. Fallback: parse raw as top-level declarations
-    const raw_null_term = try std.fmt.allocPrint(arena, "{s}\x00", .{normalized});
+    const raw_null_term = try arena.print("{s}\x00", .{normalized});
     tree = try Ast.parse(arena, raw_null_term[0 .. raw_null_term.len - 1 :0], .{ .mode = .zig });
     const root_decls = tree.rootDecls();
     if (root_decls.len > 0) {

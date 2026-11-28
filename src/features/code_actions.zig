@@ -648,10 +648,10 @@ fn handlePointlessDiscard(builder: *Builder, loc: offsets.Loc) error{OutOfMemory
 fn handleImplementMissingMethod(builder: *Builder, _: offsets.Loc, id_name: []const u8) error{OutOfMemory}!void {
     if (!builder.wantKind(.quickfix)) return;
 
-    const stub = try std.fmt.allocPrint(builder.arena, "\n\npub fn {s}() void {{\n    @panic(\"TODO: implement {s}\");\n}}\n", .{ id_name, id_name });
+    const stub = try builder.arena.print("\n\npub fn {s}() void {{\n    @panic(\"TODO: implement {s}\");\n}}\n", .{ id_name, id_name });
     const end_pos = builder.handle.tree.source.len;
     try builder.actions.append(builder.arena, .{
-        .title = try std.fmt.allocPrint(builder.arena, "Implement stub for '{s}'", .{id_name}),
+        .title = try builder.arena.print("Implement stub for '{s}'", .{id_name}),
         .kind = .quickfix,
         .edit = try builder.createWorkspaceEdit(&.{
             builder.createTextEditPos(end_pos, stub),
@@ -1407,7 +1407,7 @@ fn generateXzlsCodeActions(
 
     // Comptime evaluation code action
     try builder.actions.append(arena, .{
-        .title = try std.fmt.allocPrint(arena, "View Comptime", .{}),
+        .title = try arena.print("View Comptime", .{}),
         .kind = .refactor,
         .command = .{
             .title = "View Comptime",
@@ -1458,14 +1458,14 @@ fn generateCodeActions(
         }
 
         if (is_unreachable or is_empty_block) {
-            const try_code = try std.fmt.allocPrint(arena, "try {s}", .{caught_slice});
+            const try_code = try arena.print("try {s}", .{caught_slice});
             try builder.actions.append(arena, .{
                 .title = "Replace catch with 'try'",
                 .kind = .quickfix,
                 .edit = try builder.createWorkspaceEdit(&.{builder.createTextEditLoc(catch_loc, try_code)}),
             });
 
-            const panic_code = try std.fmt.allocPrint(arena, "{s} catch @panic(\"unhandled error\")", .{caught_slice});
+            const panic_code = try arena.print("{s} catch @panic(\"unhandled error\")", .{caught_slice});
             try builder.actions.append(arena, .{
                 .title = "Replace catch with '@panic'",
                 .kind = .quickfix,

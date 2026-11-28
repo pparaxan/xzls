@@ -795,18 +795,18 @@ pub fn collectResourceDiagnostics(
                         if (!checkResourceRelease(tree, fn_node, var_name, kind, custom_release)) {
                             const range = offsets.tokenToRange(tree, name_token, offset_encoding);
                             const msg = if (custom_release) |rel_fn|
-                                try std.fmt.allocPrint(arena, "Resource '{s}' is allocated but never got freed with {s}.", .{
+                                try arena.print("Resource '{s}' is allocated but never got freed with {s}.", .{
                                     var_name,
                                     rel_fn,
                                 })
                             else switch (kind) {
-                                .memory => try std.fmt.allocPrint(arena, "Resource '{s}' is allocated but never freed with either `free() or `destroy()`.", .{
+                                .memory => try arena.print("Resource '{s}' is allocated but never freed with either `free() or `destroy()`.", .{
                                     var_name,
                                 }),
-                                .file => try std.fmt.allocPrint(arena, "Resource '{s}' is opened but it was never closed with `close()`", .{
+                                .file => try arena.print("Resource '{s}' is opened but it was never closed with `close()`", .{
                                     var_name,
                                 }),
-                                .mutex => try std.fmt.allocPrint(arena, "Mutex '{s}' is locked but it was never unlocked with `unlock()`", .{
+                                .mutex => try arena.print("Mutex '{s}' is locked but it was never unlocked with `unlock()`", .{
                                     var_name,
                                 }),
                             };
@@ -866,7 +866,7 @@ pub fn collectEagerSemanticDiagnostics(
                         .code = null,
                         .source = "xzls",
                         .message = .{
-                            .string = try std.fmt.allocPrint(arena, "Use of the undeclared identifier '{s}'.", .{
+                            .string = try arena.print("Use of the undeclared identifier '{s}'.", .{
                                 name,
                             }),
                         },
@@ -902,7 +902,7 @@ pub fn collectEagerSemanticDiagnostics(
                                 .code = null,
                                 .source = "xzls",
                                 .message = .{
-                                    .string = try std.fmt.allocPrint(arena, "No field or method named '{s}' exists on this type.", .{
+                                    .string = try arena.print("No field or method named '{s}' exists on this type.", .{
                                         member_name,
                                     }),
                                 },
@@ -954,7 +954,7 @@ pub fn collectEagerSemanticDiagnostics(
                         .code = null,
                         .source = "xzls",
                         .message = .{
-                            .string = try std.fmt.allocPrint(arena, "Expected {d} argument(s), but found {d} argument(s).", .{
+                            .string = try arena.print("Expected {d} argument(s), but found {d} argument(s).", .{
                                 expected_count,
                                 actual_count,
                             }),
@@ -1017,7 +1017,7 @@ fn collectDiagnostics(
                             .severity = .Warning,
                             .source = "xzls",
                             .message = .{
-                                .string = try std.fmt.allocPrint(arena, "Declaration '{s}' is never used.", .{
+                                .string = try arena.print("Declaration '{s}' is never used.", .{
                                     name,
                                 }),
                             },

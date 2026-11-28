@@ -823,9 +823,9 @@ fn populatePostfixCompletions(builder: *Builder, loc: offsets.Loc) !void {
     // .try
     if (std.mem.startsWith(u8, "try", field_prefix)) {
         const insert_text = if (supports_snippets)
-            try std.fmt.allocPrint(builder.arena, "try {s}", .{receiver})
+            try builder.arena.print("try {s}", .{receiver})
         else
-            try std.fmt.allocPrint(builder.arena, "try {s}", .{receiver});
+            try builder.arena.print("try {s}", .{receiver});
 
         try builder.completions.append(builder.arena, .{
             .label = "try",
@@ -846,9 +846,9 @@ fn populatePostfixCompletions(builder: *Builder, loc: offsets.Loc) !void {
     // .catch
     if (std.mem.startsWith(u8, "catch", field_prefix)) {
         const insert_text = if (supports_snippets)
-            try std.fmt.allocPrint(builder.arena, "{s} catch |${{1:err}}| {{\n    $0\n}}", .{receiver})
+            try builder.arena.print("{s} catch |${{1:err}}| {{\n    $0\n}}", .{receiver})
         else
-            try std.fmt.allocPrint(builder.arena, "{s} catch |err| {{\n    \n}}", .{receiver});
+            try builder.arena.print("{s} catch |err| {{\n    \n}}", .{receiver});
 
         try builder.completions.append(builder.arena, .{
             .label = "catch",
@@ -869,9 +869,9 @@ fn populatePostfixCompletions(builder: *Builder, loc: offsets.Loc) !void {
     // .if
     if (std.mem.startsWith(u8, "if", field_prefix)) {
         const insert_text = if (supports_snippets)
-            try std.fmt.allocPrint(builder.arena, "if ({s}) {{\n    $0\n}}", .{receiver})
+            try builder.arena.print("if ({s}) {{\n    $0\n}}", .{receiver})
         else
-            try std.fmt.allocPrint(builder.arena, "if ({s}) {{\n    \n}}", .{receiver});
+            try builder.arena.print("if ({s}) {{\n    \n}}", .{receiver});
 
         try builder.completions.append(builder.arena, .{
             .label = "if",
@@ -892,9 +892,9 @@ fn populatePostfixCompletions(builder: *Builder, loc: offsets.Loc) !void {
     // .orelse
     if (std.mem.startsWith(u8, "orelse", field_prefix)) {
         const insert_text = if (supports_snippets)
-            try std.fmt.allocPrint(builder.arena, "{s} orelse $0", .{receiver})
+            try builder.arena.print("{s} orelse $0", .{receiver})
         else
-            try std.fmt.allocPrint(builder.arena, "{s} orelse ", .{receiver});
+            try builder.arena.print("{s} orelse ", .{receiver});
 
         try builder.completions.append(builder.arena, .{
             .label = "orelse",
@@ -915,9 +915,9 @@ fn populatePostfixCompletions(builder: *Builder, loc: offsets.Loc) !void {
     // .return
     if (std.mem.startsWith(u8, "return", field_prefix)) {
         const insert_text = if (supports_snippets)
-            try std.fmt.allocPrint(builder.arena, "return {s};", .{receiver})
+            try builder.arena.print("return {s};", .{receiver})
         else
-            try std.fmt.allocPrint(builder.arena, "return {s};", .{receiver});
+            try builder.arena.print("return {s};", .{receiver});
 
         try builder.completions.append(builder.arena, .{
             .label = "return",
@@ -938,9 +938,9 @@ fn populatePostfixCompletions(builder: *Builder, loc: offsets.Loc) !void {
     // .defer
     if (std.mem.startsWith(u8, "defer", field_prefix)) {
         const insert_text = if (supports_snippets)
-            try std.fmt.allocPrint(builder.arena, "defer {s};$0", .{receiver})
+            try builder.arena.print("defer {s};$0", .{receiver})
         else
-            try std.fmt.allocPrint(builder.arena, "defer {s};", .{receiver});
+            try builder.arena.print("defer {s};", .{receiver});
 
         try builder.completions.append(builder.arena, .{
             .label = "defer",
@@ -961,9 +961,9 @@ fn populatePostfixCompletions(builder: *Builder, loc: offsets.Loc) !void {
     // .errdefer
     if (std.mem.startsWith(u8, "errdefer", field_prefix)) {
         const insert_text = if (supports_snippets)
-            try std.fmt.allocPrint(builder.arena, "errdefer {s};$0", .{receiver})
+            try builder.arena.print("errdefer {s};$0", .{receiver})
         else
-            try std.fmt.allocPrint(builder.arena, "errdefer {s};", .{receiver});
+            try builder.arena.print("errdefer {s};", .{receiver});
 
         try builder.completions.append(builder.arena, .{
             .label = "errdefer",
@@ -984,9 +984,9 @@ fn populatePostfixCompletions(builder: *Builder, loc: offsets.Loc) !void {
     // .switch
     if (std.mem.startsWith(u8, "switch", field_prefix)) {
         const insert_text = if (supports_snippets)
-            try std.fmt.allocPrint(builder.arena, "switch ({s}) {{\n    $0\n}}", .{receiver})
+            try builder.arena.print("switch ({s}) {{\n    $0\n}}", .{receiver})
         else
-            try std.fmt.allocPrint(builder.arena, "switch ({s}) {{\n    \n}}", .{receiver});
+            try builder.arena.print("switch ({s}) {{\n    \n}}", .{receiver});
 
         try builder.completions.append(builder.arena, .{
             .label = "switch",
@@ -1007,9 +1007,9 @@ fn populatePostfixCompletions(builder: *Builder, loc: offsets.Loc) !void {
     // .while
     if (std.mem.startsWith(u8, "while", field_prefix)) {
         const insert_text = if (supports_snippets)
-            try std.fmt.allocPrint(builder.arena, "while ({s}) {{\n    $0\n}}", .{receiver})
+            try builder.arena.print("while ({s}) {{\n    $0\n}}", .{receiver})
         else
-            try std.fmt.allocPrint(builder.arena, "while ({s}) {{\n    \n}}", .{receiver});
+            try builder.arena.print("while ({s}) {{\n    \n}}", .{receiver});
 
         try builder.completions.append(builder.arena, .{
             .label = "while",
@@ -1030,9 +1030,9 @@ fn populatePostfixCompletions(builder: *Builder, loc: offsets.Loc) !void {
     // .for
     if (std.mem.startsWith(u8, "for", field_prefix)) {
         const insert_text = if (supports_snippets)
-            try std.fmt.allocPrint(builder.arena, "for ({s}) |${{1:elem}}| {{\n    $0\n}}", .{receiver})
+            try builder.arena.print("for ({s}) |${{1:elem}}| {{\n    $0\n}}", .{receiver})
         else
-            try std.fmt.allocPrint(builder.arena, "for ({s}) |elem| {{\n    \n}}", .{receiver});
+            try builder.arena.print("for ({s}) |elem| {{\n    \n}}", .{receiver});
 
         try builder.completions.append(builder.arena, .{
             .label = "for",
