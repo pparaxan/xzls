@@ -47,10 +47,14 @@ resolution, custom packages, and others. The following features are supported:
 * Go to definition/declaration
 * Workspace symbols and document symbols
 * Find references and rename symbol
-* Formatting based on `zig fmt`
+* Function reference-count CodeLens, resolved when the editor requests it[^2]
+* Relative import updates when files or folders are renamed through the editor
+* Document, selected-line, and on-type formatting based on `zig fmt`
 * Semantic tokens highlighting
 * Inlay hints
 * Code actions & autofix
+* Extract local initializer into a variable, extract scalar expression into a function,
+  and inline single-use literal constants
 * Comptime inspection
 * Structural search & replace
 
@@ -75,3 +79,14 @@ XZLS is built ontop of ZLS, and if you'd want to help their development, conside
 [GitHub Sponsors](https://github.com/sponsors/zigtools).
 
 [^1]: When comparing to XLS, such as having postfix, payload unwrapping, et al.
+
+[^2]: Requires editor CodeLens support. Opening the reference list also requires support for
+    the `editor.action.showReferences` command. Run and debug actions are not provided.
+
+Refactoring actions are conservative: extraction currently requires a selected local variable
+initializer. Function extraction supports scalar results and skips calls and control flow;
+constant inlining requires one reference and a literal initializer. Range formatting applies
+changes only within the requested lines, and on-type formatting runs after `;`, `}`, or a newline.
+File rename support updates relative `.zig` and `.zon` imports in loaded documents and requires
+the editor to send LSP file-operation requests and notifications. Live diagnostics do not yet
+provide full compiler semantic analysis of unsaved buffers.
