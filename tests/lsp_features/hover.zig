@@ -1622,3 +1622,66 @@ fn testHoverWithOptions(
         try std.testing.expectEqualStrings(expected_higlight, actual_highlight);
     }
 }
+
+test "custom build module paths resolve portably" {
+    if (!std.process.can_spawn) return error.SkipZigTest;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "app");
+    try tmp.dir.createDirPath(io, "unusual/layout");
+    try tmp.dir.writeFile(io, .{ .sub_path = "build.zig", .data =
+        \\const std = @import("std");
+        \\pub fn build(b: *std.Build) void {
+        \\    const library = b.createModule(.{ .root_source_file = b.path("unusual/layout/engine.zig") });
+        \\    _ = b.addModule("not_the_file_name", .{
+        \\        .root_source_file = b.path("app/sola.zig"),
+        \\        .imports = &.{.{ .name = "api", .module = library }},
+        \\    });
+        \\}
+    });
+    try tmp.dir.writeFile(io, .{ .sub_path = "unusual/layout/engine.zig", .data = "pub const Thing = struct { value: u32 };" });
+    const source = "const api = @import(\"api\");\npub const Item = api.Thing;\n";
+    try tmp.dir.writeFile(io, .{ .sub_path = "app/sola.zig", .data = source });
+    const file_path = try tmp.dir.realPathFileAlloc(io, "app/sola.zig", allocator);
+    defer allocator.free(file_path);
+    var real_env = try std.testing.environ.createMap(allocator);
+    defer real_env.deinit();
+
+    var ctx: Context = try .init();
+    defer ctx.deinit();
+
+    ctx.server.document_store.config.environ_map = &real_env;
+
+    const server = ctx.server;
+    const arena = ctx.arena.allocator();
+
+    const uri = try zls.Uri.fromPath(allocator, file_path);
+    defer uri.deinit(allocator);
+
+    try server.document_store.openLspSyncedDocument(uri, source);
+
+    try server.document_store.wait_group.await(ctx.server.io);
+
+    const handle = server.document_store.getHandle(uri).?;
+    var analyser = server.initAnalyser(arena, handle);
+    defer analyser.deinit();
+
+    _ = try handle.getAssociatedBuildFile(&server.document_store);
+    try server.document_store.wait_group.await(ctx.server.io);
+
+    const cursor_idx = std.mem.indexOf(u8, source, "api.Thing").?;
+    const response = try zls.hover.hoverWithOptions(
+        &analyser,
+        arena,
+        handle,
+        cursor_idx,
+        .markdown,
+        server.offset_encoding,
+        false,
+    );
+    try std.testing.expect(response != null);
+    const hover_val = response.?.contents.markup_content.value;
+    try std.testing.expect(std.mem.indexOf(u8, hover_val, "(type)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, hover_val, "unknown") == null);
+}

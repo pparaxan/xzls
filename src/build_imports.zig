@@ -48,7 +48,7 @@ fn existingPath(allocator: std.mem.Allocator, io: std.Io, path: []const u8) erro
     return try allocator.dupe(u8, path);
 }
 
-fn field(tree: *const Ast, node: Ast.Node.Index, name: []const u8) ?Ast.Node.Index {
+pub fn field(tree: *const Ast, node: Ast.Node.Index, name: []const u8) ?Ast.Node.Index {
     var buffer: [2]Ast.Node.Index = undefined;
     const init = tree.fullStructInit(&buffer, node) orelse return null;
     for (init.ast.fields) |value| {
@@ -59,7 +59,7 @@ fn field(tree: *const Ast, node: Ast.Node.Index, name: []const u8) ?Ast.Node.Ind
     return null;
 }
 
-fn stringField(allocator: std.mem.Allocator, tree: *const Ast, node: Ast.Node.Index, name: []const u8) error{OutOfMemory}!?[]const u8 {
+pub fn stringField(allocator: std.mem.Allocator, tree: *const Ast, node: Ast.Node.Index, name: []const u8) error{OutOfMemory}!?[]const u8 {
     const value = field(tree, node, name) orelse return null;
     if (tree.nodeTag(value) != .string_literal) return null;
     return std.zig.string_literal.parseAlloc(allocator, tree.tokenSlice(tree.nodeMainToken(value))) catch |err| switch (err) {

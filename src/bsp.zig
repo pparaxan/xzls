@@ -663,6 +663,16 @@ fn loadBuildConfigurationInner(
     // }
     if (build_root.path) |br_path| {
         populateZonDependencies(io, arena, br_path, options.zig_global_cache_dir.path, &dependencies);
+
+        const build_path = try Dir.path.join(arena, &.{ br_path, "build.zig" });
+        const declared = try @import("build_source.zig").collect(arena, io, build_path, options.zig_global_cache_dir.path);
+        const needs_compilation_roots = compilations.items.len == 0;
+        for (declared) |module| {
+            // Compiler-provided metadata takes precedence over static fallback.
+            const entry = try resolved_modules.getOrPut(arena, module.root);
+            if (!entry.found_existing) entry.value_ptr.* = .{ .import_table = .{ .map = module.imports } };
+            if (needs_compilation_roots) try compilations.append(arena, .{ .root_module = module.root });
+        }
     }
 
     return .{
@@ -704,7 +714,8 @@ fn populateZonDependencies(
                     if (std.mem.eql(u8, ident, "dependencies")) {
                         const eq = tokenizer.next();
                         if (eq.tag == .equal) {
-                            const lbrace = tokenizer.next();
+                            var lbrace = tokenizer.next();
+                            if (lbrace.tag == .period) lbrace = tokenizer.next();
                             if (lbrace.tag == .l_brace) {
                                 in_dependencies = true;
                                 dep_brace_depth = 1;
@@ -736,7 +747,8 @@ fn populateZonDependencies(
                 const name = zon_content[next.loc.start..next.loc.end];
                 const eq = tokenizer.next();
                 if (eq.tag == .equal) {
-                    const lb = tokenizer.next();
+                    var lb = tokenizer.next();
+                    if (lb.tag == .period) lb = tokenizer.next();
                     if (lb.tag == .l_brace) {
                         dep_brace_depth += 1;
                         current_dep_name = arena.dupe(u8, name) catch null;
@@ -780,12 +792,17 @@ fn addZonDep(
     hash: ?[]const u8,
     path: ?[]const u8,
 ) void {
+    var clean_name = name;
+    if (std.mem.startsWith(u8, clean_name, "@\"") and std.mem.endsWith(u8, clean_name, "\"")) {
+        clean_name = clean_name[2 .. clean_name.len - 1];
+    }
+
     var candidate_dirs: std.ArrayList([]const u8) = .empty;
     if (path) |p| {
         if (Dir.path.resolveAlloc(arena, &.{ build_root_path, p })) |resolved| {
             if (std.mem.endsWith(u8, resolved, ".zig")) {
                 if (Dir.accessAbsolute(io, resolved, .{})) |_| {
-                    dependencies.put(arena, name, resolved) catch return;
+                    dependencies.put(arena, clean_name, resolved) catch return;
                     return;
                 } else |_| {}
             }
@@ -809,35 +826,15 @@ fn addZonDep(
     for (candidate_dirs.items) |dir| {
         const bz = Dir.path.join(arena, &.{ dir, "build.zig" }) catch continue;
         if (Dir.accessAbsolute(io, bz, .{})) |_| {
-            dependencies.put(arena, name, bz) catch return;
-            return;
-        } else |_| {}
-        const sr = Dir.path.join(arena, &.{ dir, "src", "root.zig" }) catch continue;
-        if (Dir.accessAbsolute(io, sr, .{})) |_| {
-            dependencies.put(arena, name, sr) catch return;
-            return;
-        } else |_| {}
-        const r = Dir.path.join(arena, &.{ dir, "root.zig" }) catch continue;
-        if (Dir.accessAbsolute(io, r, .{})) |_| {
-            dependencies.put(arena, name, r) catch return;
-            return;
-        } else |_| {}
-        const sm = Dir.path.join(arena, &.{ dir, "src", "main.zig" }) catch continue;
-        if (Dir.accessAbsolute(io, sm, .{})) |_| {
-            dependencies.put(arena, name, sm) catch return;
-            return;
-        } else |_| {}
-        const named_file = arena.print("{s}.zig", .{name}) catch continue;
-        const nz = Dir.path.join(arena, &.{ dir, named_file }) catch continue;
-        if (Dir.accessAbsolute(io, nz, .{})) |_| {
-            dependencies.put(arena, name, nz) catch return;
+            const declared_root = @import("build_source.zig").uniqueExportedRoot(arena, io, bz) catch null;
+            dependencies.put(arena, clean_name, declared_root orelse bz) catch return;
             return;
         } else |_| {}
     }
 
     if (candidate_dirs.items.len > 0) {
         const default_bz = Dir.path.join(arena, &.{ candidate_dirs.items[0], "build.zig" }) catch return;
-        dependencies.put(arena, name, default_bz) catch return;
+        dependencies.put(arena, clean_name, default_bz) catch return;
     }
 }
 
