@@ -817,7 +817,14 @@ fn addZonDep(
             candidate_dirs.append(arena, resolved) catch {};
         } else |_| {}
         if (global_cache_path) |gc| {
-            if (Dir.path.resolveAlloc(arena, &.{ gc, "p", h })) |resolved| {
+            // Zig permits cache paths relative to the server's working
+            // directory. resolveAlloc normalizes components but does not
+            // turn a relative first component into an absolute path.
+            const cache_root = if (Dir.path.isAbsolute(gc)) gc else cache: {
+                const cwd = std.process.currentPathAlloc(io, arena) catch return;
+                break :cache Dir.path.resolveAlloc(arena, &.{ cwd, gc }) catch return;
+            };
+            if (Dir.path.resolveAlloc(arena, &.{ cache_root, "p", h })) |resolved| {
                 candidate_dirs.append(arena, resolved) catch {};
             } else |_| {}
         }
@@ -836,6 +843,27 @@ fn addZonDep(
         const default_bz = Dir.path.join(arena, &.{ candidate_dirs.items[0], "build.zig" }) catch return;
         dependencies.put(arena, clean_name, default_bz) catch return;
     }
+}
+
+test "ZON dependencies resolve a relative global cache path" {
+    const io = std.testing.io;
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "cache/p/cached-hash");
+    try tmp.dir.writeFile(io, .{ .sub_path = "cache/p/cached-hash/build.zig", .data = "pub fn build() void {}" });
+    const root = try tmp.dir.realPathFileAlloc(io, ".", allocator);
+    const cwd = try std.process.currentPathAlloc(io, allocator);
+    const cache = try Dir.path.join(allocator, &.{ root, "cache" });
+    const relative_cache = try Dir.path.relativeAlloc(allocator, ".", null, cwd, cache);
+    try std.testing.expect(!Dir.path.isAbsolute(relative_cache));
+    var dependencies: std.array_hash_map.String([]const u8) = .empty;
+    addZonDep(io, allocator, root, relative_cache, &dependencies, "cached", "cached-hash", null);
+    const actual = dependencies.get("cached") orelse return error.MissingDependency;
+    const expected = try Dir.path.join(allocator, &.{ cache, "p", "cached-hash", "build.zig" });
+    try std.testing.expectEqualStrings(expected, actual);
 }
 
 const BasePaths = std.enums.EnumMap(Configuration.LazyPath.Relative.Base, []const u8);

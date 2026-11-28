@@ -41,11 +41,14 @@ pub fn resolve(
 }
 
 fn existingPath(allocator: std.mem.Allocator, io: std.Io, path: []const u8) error{ OutOfMemory, Canceled }!?[]u8 {
-    std.Io.Dir.accessAbsolute(io, path, .{}) catch |err| switch (err) {
-        error.Canceled => return error.Canceled,
+    // Cache paths from Zig may be relative to cwd. Resolve the existing file
+    // through cwd rather than passing it to an absolute-only filesystem API.
+    const resolved = std.Io.Dir.cwd().realPathFileAlloc(io, path, allocator) catch |err| switch (err) {
+        error.OutOfMemory, error.Canceled => |failure| return failure,
         else => return null,
     };
-    return try allocator.dupe(u8, path);
+    defer allocator.free(resolved);
+    return try allocator.dupe(u8, resolved);
 }
 
 pub fn field(tree: *const Ast, node: Ast.Node.Index, name: []const u8) ?Ast.Node.Index {
@@ -90,6 +93,15 @@ test "build imports resolve cached and vendored packages" {
     defer allocator.free(build_path);
     const cache_path = try std.Io.Dir.path.join(allocator, &.{ root, "cache" });
     defer allocator.free(cache_path);
+    const cwd = try std.process.currentPathAlloc(io, allocator);
+    defer allocator.free(cwd);
+    const relative_cache = try std.Io.Dir.path.relativeAlloc(allocator, ".", null, cwd, cache_path);
+    defer allocator.free(relative_cache);
+    const relative_result = (try resolve(allocator, io, build_path, "cached", relative_cache)) orelse return error.MissingDependency;
+    defer allocator.free(relative_result);
+    const expected_cached = try std.Io.Dir.path.join(allocator, &.{ cache_path, "p", "cached-hash", "build.zig" });
+    defer allocator.free(expected_cached);
+    try std.testing.expectEqualStrings(expected_cached, relative_result);
     for ([_][]const u8{ "cached", "vendored" }, [_][]const u8{ "cache/p/cached-hash/build.zig", "zig-pkg/vendored-hash/build.zig" }) |name, relative| {
         const actual = (try resolve(allocator, io, build_path, name, cache_path)) orelse return error.MissingDependency;
         defer allocator.free(actual);
