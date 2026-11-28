@@ -203,13 +203,22 @@ fn typeToCompletion(builder: *Builder, ty: Analyser.Type) Analyser.Error!void {
         },
         .anytype_parameter => |info| {
             if (info.type_from_callsite_references) |t| {
-                try typeToCompletion(builder, t.*);
+                var candidate = t.*;
+                candidate.is_type_val = ty.is_type_val;
+                try typeToCompletion(builder, candidate);
+            }
+        },
+        .type_parameter => {
+            if (try builder.analyser.resolveTypeParameterCallsites(ty)) |target| {
+                var instance = target;
+                instance.is_type_val = ty.is_type_val;
+                try typeToCompletion(builder, instance);
             }
         },
         .error_union => |info| {
             // Provide completions for the payload type of an error union.
             // This covers field access on values like `io.operate(...)` whose
-            // return type is `E!T`; ZLS shows completions for `T`.
+            // return type is `E!T`.
             if (!ty.is_type_val) {
                 var payload_ty = info.payload.*;
                 payload_ty.is_type_val = false;
@@ -219,7 +228,6 @@ fn typeToCompletion(builder: *Builder, ty: Analyser.Type) Analyser.Error!void {
         .function,
         .union_tag,
         .compile_error,
-        .type_parameter,
         => {},
     }
 }

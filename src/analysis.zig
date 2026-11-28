@@ -816,6 +816,21 @@ pub fn resolveFieldAccess(analyser: *Analyser, lhs: Type, field_name: []const u8
 pub fn resolveFieldAccessBinding(analyser: *Analyser, lhs_binding: Binding, field_name: []const u8) Error!?Binding {
     const lhs = lhs_binding.type;
 
+    if (lhs.data == .type_parameter) {
+        const inferred = try analyser.resolveTypeParameterCallsites(lhs) orelse return null;
+        var matches: std.ArrayList(Type.TypeWithDescriptor) = .empty;
+        var is_const = true;
+        for (try inferred.getAllTypesWithHandles(analyser)) |candidate| {
+            if (candidate.data == .type_parameter) continue;
+            var instance = candidate;
+            instance.is_type_val = lhs.is_type_val;
+            const binding = try analyser.resolveFieldAccessBinding(.{ .type = instance, .is_const = lhs_binding.is_const }, field_name) orelse continue;
+            is_const = is_const and binding.is_const;
+            try matches.append(analyser.arena, .{ .type = binding.type, .descriptor = field_name });
+        }
+        return .{ .type = try Type.fromEither(analyser, matches.items) orelse return null, .is_const = is_const };
+    }
+
     if (try analyser.resolveUnionTagAccess(lhs, field_name)) |t|
         return .{ .type = t, .is_const = true };
 
@@ -1822,7 +1837,7 @@ fn resolvePeerTypesInternal(analyser: *Analyser, a: Type, b: Type) error{OutOfMe
     return null;
 }
 
-fn resolveCallsiteReferences(analyser: *Analyser, decl_handle: DeclWithHandle) Error!?Type {
+fn resolveCallsiteReferences(analyser: *Analyser, decl_handle: DeclWithHandle, preserve_type_values: bool) Error!?Type {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
@@ -1861,8 +1876,9 @@ fn resolveCallsiteReferences(analyser: *Analyser, decl_handle: DeclWithHandle) E
     var possible: std.ArrayList(Type.TypeWithDescriptor) = .empty;
 
     for (refs.items) |ref| {
+        const ref_tree = &ref.handle.tree;
         var call_buf: [1]Ast.Node.Index = undefined;
-        const call = tree.fullCall(&call_buf, ref.node).?;
+        const call = ref_tree.fullCall(&call_buf, ref.node) orelse continue;
 
         const real_param_idx = if (func_params_len != 0 and pay.param_index != 0 and call.ast.params.len == func_params_len - 1)
             pay.param_index - 1
@@ -1871,26 +1887,20 @@ fn resolveCallsiteReferences(analyser: *Analyser, decl_handle: DeclWithHandle) E
 
         if (real_param_idx >= call.ast.params.len) continue;
 
-        var ty = resolve_ty: {
-            // don't resolve callsite references while resolving callsite references
-            const old_collect_callsite_references = analyser.collect_callsite_references;
-            defer analyser.collect_callsite_references = old_collect_callsite_references;
-            analyser.collect_callsite_references = false;
+        var ty = try analyser.resolveTypeOfNode(.of(
+            // TODO?: this is a """heuristic based approach"""
+            // perhaps it would be better to use proper self detection
+            // maybe it'd be a perf issue and this is fine?
+            // you figure it out future contributor <3
+            call.ast.params[real_param_idx],
+            ref.handle,
+        )) orelse continue;
 
-            break :resolve_ty try analyser.resolveTypeOfNode(.of(
-                // TODO?: this is a """heuristic based approach"""
-                // perhaps it would be better to use proper self detection
-                // maybe it'd be a perf issue and this is fine?
-                // you figure it out future contributor <3
-                call.ast.params[real_param_idx],
-                ref.handle,
-            )) orelse continue;
-        };
-
-        ty = try ty.typeOf(analyser);
+        if (!preserve_type_values) ty = try ty.typeOf(analyser);
+        if (!ty.is_type_val) continue;
         std.debug.assert(ty.is_type_val);
 
-        const loc = offsets.tokenToPosition(tree, tree.nodeMainToken(call.ast.params[real_param_idx]), .@"utf-8");
+        const loc = offsets.tokenToPosition(ref_tree, ref_tree.nodeMainToken(call.ast.params[real_param_idx]), .@"utf-8");
         try possible.append(analyser.arena, .{
             .type = ty,
             .descriptor = try analyser.arena.print("{s}:{d}:{d}", .{ ref.handle.uri.raw, loc.line + 1, loc.character + 1 }),
@@ -1900,6 +1910,14 @@ fn resolveCallsiteReferences(analyser: *Analyser, decl_handle: DeclWithHandle) E
     const maybe_type = try Type.fromEither(analyser, possible.items);
     if (maybe_type) |ty| analyser.resolved_callsites.getPtr(pay).?.* = ty;
     return maybe_type;
+}
+
+pub fn resolveTypeParameterCallsites(analyser: *Analyser, ty: Type) Error!?Type {
+    if (ty.data != .type_parameter) return null;
+    const parameter = ty.data.type_parameter;
+    const tree = &parameter.handle.tree;
+    const decl = try analyser.lookupSymbolGlobal(parameter.handle, tree.tokenSlice(parameter.token), tree.tokenStart(parameter.token)) orelse return null;
+    return analyser.resolveCallsiteReferences(decl, true);
 }
 
 fn resolveFunctionTypeFromCall(
@@ -6303,7 +6321,7 @@ pub const DeclWithHandle = struct {
                 const type_expr = param.type_expr orelse {
                     const anytype_token = param.anytype_ellipsis3 orelse return null;
                     if (tree.tokenTag(anytype_token) != .keyword_anytype) return null;
-                    const ty = try analyser.resolveCallsiteReferences(self);
+                    const ty = try analyser.resolveCallsiteReferences(self, false);
                     break :blk Type{
                         .data = .{
                             .anytype_parameter = .{

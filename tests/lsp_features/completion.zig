@@ -3214,10 +3214,10 @@ test "anytype resolution based on callsite-references" {
         \\    writer.<cursor>
         \\}
     , &.{
-        .{ .label = "write1", .kind = .Function, .detail = "fn (self: Writer1) void" },
-        .{ .label = "write2", .kind = .Function, .detail = "fn (self: Writer2) void" },
-        .{ .label = "writeAll1", .kind = .Function, .detail = "fn (self: Writer1) void" },
-        .{ .label = "writeAll2", .kind = .Function, .detail = "fn (self: Writer2) void" },
+        .{ .label = "write1", .kind = .Method, .detail = "fn (self: Writer1) void" },
+        .{ .label = "write2", .kind = .Method, .detail = "fn (self: Writer2) void" },
+        .{ .label = "writeAll1", .kind = .Method, .detail = "fn (self: Writer1) void" },
+        .{ .label = "writeAll2", .kind = .Method, .detail = "fn (self: Writer2) void" },
     });
     try testCompletion(
         \\const Writer1 = struct {
@@ -3236,8 +3236,8 @@ test "anytype resolution based on callsite-references" {
         \\    writer.<cursor>
         \\}
     , &.{
-        .{ .label = "write1", .kind = .Function, .detail = "fn (self: Writer1) void" },
-        .{ .label = "writeAll1", .kind = .Function, .detail = "fn (self: Writer1) void" },
+        .{ .label = "write1", .kind = .Method, .detail = "fn (self: Writer1) void" },
+        .{ .label = "writeAll1", .kind = .Method, .detail = "fn (self: Writer1) void" },
     });
 }
 
@@ -3699,6 +3699,22 @@ test "either" {
         .{ .label = "alpha", .kind = .Function, .detail = "fn (_: Alpha) void" },
         .{ .label = "beta", .kind = .Function, .detail = "fn (_: Beta) void" },
     });
+}
+
+test "generic wrapper preserves nested field type" {
+    try testCompletion(
+        \\fn Wrapper(comptime T: type) type {
+        \\    return struct {
+        \\        value: T,
+        \\        fn use(self: @This()) void {
+        \\            self.value.<cursor>
+        \\        }
+        \\    };
+        \\}
+        \\fn wrap(value: anytype) Wrapper(@TypeOf(value)) { return .{ .value = value }; }
+        \\const S = struct { alpha: u32 };
+        \\const value = wrap(S{ .alpha = 1 });
+    , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
 }
 
 test "incomplete switch target preserves enum completions" {
