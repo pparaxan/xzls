@@ -3702,6 +3702,16 @@ test "either" {
     });
 }
 
+test "multiline call result field access" {
+    try testCompletion(
+        \\const S = struct { alpha: u32 };
+        \\fn make(_: u32) S { return undefined; }
+        \\const value = make(
+        \\    42,
+        \\).<cursor>
+    , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
+}
+
 test "zeroInit partial initializer fields" {
     try testCompletion(
         \\const std = @import("std");

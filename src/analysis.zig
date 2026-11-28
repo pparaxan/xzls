@@ -5719,6 +5719,30 @@ pub fn getPositionContext(
         break;
     }
 
+    // Include the callee when completing a call whose closing parenthesis
+    // starts a new line. Adapted from zigscient's multiline-call completion.
+    if (std.mem.startsWith(u8, std.mem.trimStart(u8, offsets.locToSlice(tree.source, line_loc), " \t\r"), ").")) {
+        var token = offsets.sourceIndexToTokenIndex(tree, line_loc.start).preferRight(tree);
+        var depth: usize = 0;
+        while (true) {
+            switch (tree.tokenTag(token)) {
+                .r_paren => depth += 1,
+                .l_paren => {
+                    if (depth == 0) break;
+                    depth -= 1;
+                    if (depth == 0) {
+                        line_loc.start = offsets.lineLocAtIndex(tree.source, tree.tokenStart(token)).start;
+                        break;
+                    }
+                },
+                .semicolon => break,
+                else => {},
+            }
+            if (token == 0) break;
+            token -= 1;
+        }
+    }
+
     var stack: Stack = try .initCapacity(allocator, 8);
     defer stack.deinit(allocator);
     var should_do_lookahead = lookahead;
