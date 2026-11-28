@@ -153,6 +153,7 @@ pub fn build(b: *Build) !void {
                 .root_module = release_exe_module,
                 .max_rss = if (optimize == .debug and target_query.os_tag == .wasi) 2_600_000_000 else 2_750_000_000,
                 .use_llvm = use_llvm,
+                .use_lld = use_llvm,
             });
         }
 
@@ -176,6 +177,7 @@ pub fn build(b: *Build) !void {
             .name = "xzls",
             .root_module = exe_module,
             .use_llvm = use_llvm,
+            .use_lld = use_llvm,
         });
         exe.pie = pie;
         b.installArtifact(exe);
@@ -206,6 +208,7 @@ pub fn build(b: *Build) !void {
         }),
         .filters = test_filters,
         .use_llvm = use_llvm,
+        .use_lld = use_llvm,
     });
 
     const src_tests = b.addTest(.{
@@ -213,6 +216,7 @@ pub fn build(b: *Build) !void {
         .root_module = exe_module,
         .filters = test_filters,
         .use_llvm = use_llvm,
+        .use_lld = use_llvm,
     });
 
     { // zig build test, zig build test-analysis
