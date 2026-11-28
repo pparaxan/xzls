@@ -3740,6 +3740,18 @@ test "incomplete initializer before type declaration" {
     , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
 }
 
+test "nested completions survive a missing semicolon" {
+    try testCompletion(
+        \\const Outer = struct {
+        \\    const S = struct { alpha: u32 };
+        \\    fn build() void {
+        \\        const broken = 1
+        \\        const value = S{ .<cursor> };
+        \\    }
+        \\};
+    , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
+}
+
 test "incomplete fields preserve nested container completions" {
     try testCompletion(
         \\const Outer = struct {
