@@ -1,4 +1,19 @@
 const std = @import("std");
+
+test "move initializer type to variable annotation" {
+    try testDiagnostic(
+        \\const <>foo = @as(u32, 42);
+    ,
+        \\const foo: u32 = 42;
+    , .{ .filter_title = "Move initializer type to variable annotation", .filter_kind = .refactor });
+    try testDiagnostic(
+        \\const S = struct {};
+        \\const <>foo = S{};
+    ,
+        \\const S = struct {};
+        \\const foo: S = .{};
+    , .{ .filter_title = "Move initializer type to variable annotation", .filter_kind = .refactor });
+}
 const zls = @import("xzls");
 
 const Context = @import("../context.zig").Context;

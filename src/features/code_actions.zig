@@ -173,6 +173,7 @@ pub const Builder = struct {
         }
 
         try generateXzlsCodeActions(builder, range, source_index, ctx);
+        try generateExplicitVariableTypeActions(builder, source_index);
     }
 
     pub fn createTextEditLoc(self: *Builder, loc: offsets.Loc, new_text: []const u8) types.TextEdit {
@@ -192,6 +193,41 @@ pub const Builder = struct {
         return workspace_edit;
     }
 };
+
+fn generateExplicitVariableTypeActions(builder: *Builder, source_index: usize) error{OutOfMemory}!void {
+    if (!builder.wantKind(.refactor)) return;
+    const tree = &builder.handle.tree;
+    for (0..tree.nodes.len) |index| {
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(index));
+        const decl = tree.fullVarDecl(node) orelse continue;
+        if (decl.ast.type_node != .none) continue;
+        const loc = offsets.nodeToLoc(tree, node);
+        if (source_index < loc.start or source_index > loc.end) continue;
+        const init = decl.ast.init_node.unwrap() orelse continue;
+        var type_node: Ast.Node.Index = undefined;
+        var replacement: []const u8 = undefined;
+        var params_buffer: [2]Ast.Node.Index = undefined;
+        if (tree.builtinCallParams(&params_buffer, init)) |params| {
+            if (!std.mem.eql(u8, tree.tokenSlice(tree.nodeMainToken(init)), "@as") or params.len != 2) continue;
+            type_node = params[0];
+            replacement = offsets.nodeToSlice(tree, params[1]);
+        } else if (tree.fullStructInit(&params_buffer, init)) |struct_init| {
+            type_node = struct_init.ast.type_expr.unwrap() orelse continue;
+            const type_loc = offsets.nodeToLoc(tree, type_node);
+            const init_loc = offsets.nodeToLoc(tree, init);
+            replacement = try builder.arena.print(".{s}", .{tree.source[type_loc.end..init_loc.end]});
+        } else continue;
+        const name_end = offsets.tokenToLoc(tree, decl.ast.mut_token + 1).end;
+        try builder.actions.append(builder.arena, .{
+            .title = "Move initializer type to variable annotation",
+            .kind = .refactor,
+            .edit = try builder.createWorkspaceEdit(&.{
+                builder.createTextEditPos(name_end, try builder.arena.print(": {s}", .{offsets.nodeToSlice(tree, type_node)})),
+                builder.createTextEditLoc(offsets.nodeToLoc(tree, init), replacement),
+            }),
+        });
+    }
+}
 
 fn generateStringLiteralCodeActions(
     builder: *Builder,
