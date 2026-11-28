@@ -1619,6 +1619,20 @@ pub fn uriFromImportStr(
 
     if (!supports_build_system) return .none;
 
+    if (isBuildFile(handle.uri)) {
+        const build_path = handle.uri.toFsPath(allocator) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.UnsupportedScheme => null,
+        };
+        if (build_path) |path| {
+            defer allocator.free(path);
+            if (try @import("build_imports.zig").resolve(allocator, self.io, path, import_str, if (self.config.zig_cache_dir) |cache| cache.path else null)) |dependency| {
+                defer allocator.free(dependency);
+                return .{ .one = try .fromPath(allocator, dependency) };
+            }
+        }
+    }
+
     if (std.mem.eql(u8, import_str, "root")) {
         const root_source_files = switch (try handle.getAssociatedCompilationUnits(self)) {
             .none, .unresolved => return .none,
