@@ -3644,6 +3644,17 @@ test "label" {
 
 test "either" {
     try testCompletion(
+        \\const builtin = @import("builtin");
+        \\const Header = if (builtin.cpu.arch.endian() == .big) packed struct {
+        \\    value: u8,
+        \\} else packed struct {
+        \\    value: u8,
+        \\};
+        \\fn useHeader(header: Header) void {
+        \\    header.<cursor>
+        \\}
+    , &.{.{ .label = "value", .kind = .Field, .detail = "u8" }});
+    try testCompletion(
         \\const Alpha = struct {
         \\    fn alpha(_: @This()) void {}
         \\};
