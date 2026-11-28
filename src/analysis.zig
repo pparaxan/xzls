@@ -967,6 +967,16 @@ pub fn resolveOptionalUnwrap(analyser: *Analyser, optional: Type) error{OutOfMem
 
 pub fn resolveOrelseType(analyser: *Analyser, lhs: Type, rhs: Type) error{OutOfMemory}!?Type {
     if (rhs.is_type_val) return null;
+    if (rhs.data == .ip_index and analyser.ip.zigTypeTag(rhs.data.ip_index.type) == .error_set) {
+        const payload = try analyser.resolveOptionalUnwrap(lhs) orelse return null;
+        return .{
+            .data = .{ .error_union = .{
+                .error_set = try analyser.allocType(try rhs.typeOf(analyser)),
+                .payload = try analyser.allocType(try payload.typeOf(analyser)),
+            } },
+            .is_type_val = false,
+        };
+    }
     return switch (rhs.data) {
         .optional => rhs,
         .ip_index => |payload| switch (analyser.ip.indexToKey(payload.type)) {

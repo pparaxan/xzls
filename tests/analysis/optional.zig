@@ -69,6 +69,12 @@ fn orelse_5() void {
     _ = foo;
 }
 
+fn orelse_error(value: ?i32) void {
+    const result = value orelse error.NullValue;
+    //    ^^^^^^ (error{NullValue}!i32)()
+    _ = result;
+}
+
 fn orelse_6() void {
     const S = struct {
         alpha: u32,
