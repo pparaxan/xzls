@@ -1920,7 +1920,7 @@ pub fn resolveTypeParameterCallsites(analyser: *Analyser, ty: Type) Error!?Type 
     return analyser.resolveCallsiteReferences(decl, true);
 }
 
-fn resolveFunctionTypeFromCall(
+pub fn resolveFunctionTypeFromCall(
     analyser: *Analyser,
     handle: *DocumentStore.Handle,
     call: Ast.full.Call,

@@ -3824,6 +3824,51 @@ test "zeroInit partial initializer fields" {
     });
 }
 
+test "generic initializer parameters use supplied types" {
+    try testCompletion(
+        \\const S = struct { alpha: u32 };
+        \\fn init(comptime T: type, value: T) T { return value; }
+        \\const value = init(S, .{ .<cursor> });
+    , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
+    try testCompletion(
+        \\const S = struct { alpha: u32 };
+        \\const Factory = struct {
+        \\    fn init(_: @This(), comptime T: type, value: T) T { return value; }
+        \\};
+        \\const factory: Factory = .{};
+        \\const value = factory.init(S, .{ .<cursor> });
+    , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
+    try testCompletion(
+        \\const std = @import("std");
+        \\const S = struct { alpha: u32 };
+        \\test { try std.testing.expectEqual(S{ .alpha = 1 }, .{ .<cursor> }); }
+    , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
+    try testCompletion(
+        \\const std = @import("std");
+        \\const S = struct { alpha: u32 };
+        \\test { try std.testing.expectEqualDeep(S{ .alpha = 1 }, .{ .<cursor> }); }
+    , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
+    try testCompletion(
+        \\const std = @import("std");
+        \\const init = std.mem.zeroInit;
+        \\const S = struct { alpha: u32 };
+        \\const value = init(S, .{ .<cursor> });
+    , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
+    try testCompletion(
+        \\const S = struct { alpha: u32 };
+        \\fn unrelated(comptime T: type, value: anytype) void { _ = T; _ = value; }
+        \\const value = unrelated(S, .{ .<cursor> });
+    , &.{});
+}
+
+test "zeroInit nested initializer fields" {
+    try testCompletion(
+        \\const std = @import("std");
+        \\const S = struct { nested: struct { alpha: u32 } };
+        \\const value = std.mem.zeroInit(S, .{ .nested = .{ .<cursor> } });
+    , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
+}
+
 test "either - fields and methods with same name" {
     try testCompletionWithOptions(
         \\const Foo = struct {

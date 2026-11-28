@@ -2241,6 +2241,43 @@ fn collectContainerNodes(
     const nodes = try ast.nodesOverlappingIndexIncludingParseErrors(gpa, &handle.tree, source_index);
     defer gpa.free(nodes);
 
+    if (!dot_context.need_ret_type and
+        (dot_context.likely == .struct_field or dot_context.likely == .enum_arg) and
+        (handle.tree.nodeTag(nodes[0]) == .identifier or handle.tree.nodeTag(nodes[0]) == .field_access))
+    {
+        if (try builder.analyser.resolveTypeOfNode(.of(nodes[0], handle))) |raw_type| {
+            if (try builder.analyser.resolveFuncProtoOfCallable(raw_type)) |function| {
+                for (nodes[1..]) |ancestor| {
+                    var buffer: [1]Ast.Node.Index = undefined;
+                    const call = handle.tree.fullCall(&buffer, ancestor) orelse continue;
+                    if (call.ast.fn_expr != nodes[0]) continue;
+                    const info = function.data.function;
+                    if (dot_context.fn_arg_index == 1 and call.ast.params.len >= 2) {
+                        const name = info.name orelse "";
+                        const zero_init = std.mem.eql(u8, name, "zeroInit") and std.mem.endsWith(u8, info.handle.uri.raw, "/std/mem.zig");
+                        const comparison = (std.mem.eql(u8, name, "expectEqual") or std.mem.eql(u8, name, "expectEqualDeep")) and std.mem.endsWith(u8, info.handle.uri.raw, "/std/testing.zig");
+                        if (zero_init or comparison) {
+                            if (try builder.analyser.resolveTypeOfNode(.of(call.ast.params[0], handle))) |argument| {
+                                const target = if (comparison) try argument.typeOf(builder.analyser) else argument;
+                                _ = try target.getAllTypesWithHandlesArraySet(builder.analyser, &types_with_handles);
+                                return types_with_handles.keys();
+                            }
+                        }
+                    }
+                    if (!function.isGenericType()) break;
+                    const resolved = try builder.analyser.resolveFunctionTypeFromCall(handle, call, function);
+                    const has_self = try builder.analyser.isInstanceCall(handle, call, resolved);
+                    const parameters = resolved.data.function.parameters[@intFromBool(has_self)..];
+                    if (dot_context.fn_arg_index >= parameters.len) break;
+                    const parameter_type = parameters[dot_context.fn_arg_index].type.resolveDeclLiteralResultType();
+                    if (parameter_type.data == .anytype_parameter or parameter_type.data == .type_parameter) break;
+                    _ = try parameter_type.getAllTypesWithHandlesArraySet(builder.analyser, &types_with_handles);
+                    return types_with_handles.keys();
+                }
+            }
+        }
+    }
+
     switch (handle.tree.nodeTag(nodes[0])) {
         .field_access => {
             if (try builder.analyser.resolveTypeOfNode(.of(nodes[0], handle))) |ty| {
@@ -2248,15 +2285,6 @@ fn collectContainerNodes(
                     std.mem.eql(u8, ty.data.function.name orelse "", "zeroInit") and
                     std.mem.endsWith(u8, ty.data.function.handle.uri.raw, "/std/mem.zig"))
                 {
-                    for (nodes[1..]) |ancestor| {
-                        var buffer: [1]Ast.Node.Index = undefined;
-                        const call = handle.tree.fullCall(&buffer, ancestor) orelse continue;
-                        if (call.ast.fn_expr != nodes[0] or call.ast.params.len == 0) continue;
-                        if (try builder.analyser.resolveTypeOfNode(.of(call.ast.params[0], handle))) |target| {
-                            _ = try target.getAllTypesWithHandlesArraySet(builder.analyser, &types_with_handles);
-                            return types_with_handles.keys();
-                        }
-                    }
                     // An unfinished initializer may make the parser drop the
                     // enclosing call, while preserving its argument nodes.
                     const first_arg_token = ast.lastToken(&handle.tree, nodes[0]) + 2;
