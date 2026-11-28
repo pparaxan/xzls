@@ -152,6 +152,25 @@ test "autofix comment" {
     }, .{ .autofix = true });
 }
 
+test "function call with an invalid argument count" {
+    try testDiagnostics(
+        \\const Allocator = struct { pub fn print(self: *Allocator, fmt: []const u8, args: []const u8) void { _ = self; _ = fmt; _ = args; } };
+        \\fn format(allocator: *Allocator, item: []const u8) void {
+        \\    allocator.print(allocator, "{s}", item);
+        \\}
+    , &.{
+        .{
+            .range = .{
+                .start = .{ .line = 2, .character = 4 },
+                .end = .{ .line = 2, .character = 43 },
+            },
+            .severity = .Error,
+            .source = "xzls",
+            .message = .{ .string = "Expected 2 argument(s), but found 3 argument(s)." },
+        },
+    }, .{ .enable_checks = true });
+}
+
 fn testDiagnostics(
     source: []const u8,
     expected_diagnostics: []const types.Diagnostic,

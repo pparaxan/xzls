@@ -923,13 +923,12 @@ pub fn collectEagerSemanticDiagnostics(
                 const fn_ty = (analyser.resolveFuncProtoOfCallable(ty) catch null) orelse continue;
                 const fn_info = fn_ty.data.function;
 
-                var has_self_param = (call.ast.params.len + 1 == fn_info.parameters.len) and
-                    ((analyser.isInstanceCall(handle, call, fn_ty) catch false));
+                var has_self_param = analyser.isInstanceCall(handle, call, fn_ty) catch false;
 
                 // If isInstanceCall couldn't resolve the type (e.g., conditional comptime type or generic container),
                 // but the call is syntactically a method call (obj.method(...)) and the function has exactly one more parameter
                 // whose first parameter name is typically `self`, treat it as an instance call.
-                if (!has_self_param and call.ast.params.len + 1 == fn_info.parameters.len and tree.nodeTag(call.ast.fn_expr) == .field_access) {
+                if (!has_self_param and tree.nodeTag(call.ast.fn_expr) == .field_access) {
                     if (fn_info.parameters.len > 0) {
                         const first_param = fn_info.parameters[0];
                         if (first_param.name) |pname| {
