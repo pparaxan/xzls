@@ -15,6 +15,13 @@ test "empty" {
     try testInlayHints("", .{ .kind = .Type });
 }
 
+test "explicit initializer types do not need type hints" {
+    try testInlayHints(
+        \\const v = SomeType{};
+        \\const a = [2]SomeType{ .{}, .{} };
+    , .{ .kind = .Type });
+}
+
 test "function call" {
     try testInlayHints(
         \\fn foo(alpha: u32) void {}

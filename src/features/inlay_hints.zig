@@ -476,6 +476,22 @@ fn writeNodeInlayHint(
             if (!builder.config.inlay_hints_show_variable_type_hints) return;
             const var_decl = builder.handle.tree.fullVarDecl(node).?;
             if (var_decl.ast.type_node != .none) return;
+            // Typed initializers already spell out the variable's type.
+            if (var_decl.ast.init_node.unwrap()) |init_node| {
+                var buffer: [2]Ast.Node.Index = undefined;
+                if (tree.fullArrayInit(&buffer, init_node)) |init| {
+                    if (init.ast.type_expr.unwrap()) |type_expr| switch (tree.nodeTag(type_expr)) {
+                        .array_type, .array_type_sentinel, .identifier, .field_access => return,
+                        else => {},
+                    };
+                }
+                if (tree.fullStructInit(&buffer, init_node)) |init| {
+                    if (init.ast.type_expr.unwrap()) |type_expr| switch (tree.nodeTag(type_expr)) {
+                        .identifier, .field_access => return,
+                        else => {},
+                    };
+                }
+            }
 
             try appendTypeHintString(
                 builder,
