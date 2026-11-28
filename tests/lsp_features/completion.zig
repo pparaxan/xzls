@@ -5440,6 +5440,14 @@ test "build.zig.zon completions" {
 
 test "postfix dot completions" {
     try testCompletion(
+        \\const value: f32 = 1;
+        \\const result = value.intFromF<cursor>;
+    , &.{.{ .label = "intFromFloat", .kind = .Snippet }});
+    try testCompletion(
+        \\const value: u8 = 1;
+        \\const result = value.as<cursor>;
+    , &.{.{ .label = "as", .kind = .Snippet }});
+    try testCompletion(
         \\fn foo() void {
         \\    bar().def<cursor>
         \\}

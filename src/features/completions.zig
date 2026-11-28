@@ -793,6 +793,25 @@ fn populatePostfixCompletions(builder: *Builder, loc: offsets.Loc) !void {
     const supports_snippets = builder.use_snippets;
     const replace_range = offsets.locToRange(builder.orig_handle.tree.source, loc, builder.server.offset_encoding);
 
+    const casts = [_][]const u8{ "as", "intFromFloat", "floatFromInt", "intCast", "floatCast", "ptrCast", "alignCast", "bitCast", "truncate" };
+    for (casts) |cast| {
+        if (!std.mem.startsWith(u8, cast, field_prefix)) continue;
+        if (!supports_snippets and std.mem.eql(u8, cast, "as")) continue;
+        const text = if (std.mem.eql(u8, cast, "as"))
+            try builder.arena.print("@as(${{1:T}}, {s})$0", .{receiver})
+        else
+            try builder.arena.print("@{s}({s})", .{ cast, receiver });
+        try builder.completions.append(builder.arena, .{
+            .label = cast,
+            .kind = if (supports_snippets) .Snippet else .Function,
+            .detail = "cast expression (postfix)",
+            .insertTextFormat = if (supports_snippets) .Snippet else .PlainText,
+            .textEdit = .{ .text_edit = .{ .range = replace_range, .newText = text } },
+            .filterText = cast,
+            .sortText = try builder.arena.print("~~~{s}", .{cast}),
+        });
+    }
+
     // .try
     if (std.mem.startsWith(u8, "try", field_prefix)) {
         const insert_text = if (supports_snippets)
