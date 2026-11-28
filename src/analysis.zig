@@ -177,7 +177,7 @@ pub fn getFunctionSignatureUnindented(allocator: std.mem.Allocator, tree: *const
     var indentation: usize = 0;
     while (line_start + indentation < start and tree.source[line_start + indentation] == ' ') : (indentation += 1) {}
     if (indentation == 0 or std.mem.indexOfScalar(u8, signature, '\n') == null) return signature;
-    var output: std.ArrayList(u8) = .empty;
+    var output: std.ArrayList(u8) = try .initCapacity(allocator, signature.len);
     errdefer output.deinit(allocator);
     var lines = std.mem.splitScalar(u8, signature, '\n');
     try output.appendSlice(allocator, lines.next().?);
