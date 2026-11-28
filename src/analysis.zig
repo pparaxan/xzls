@@ -467,10 +467,11 @@ pub fn isInstanceCall(
 
     const container_node, _ = call_handle.tree.nodeData(call.ast.fn_expr).node_and_token;
 
-    const container_ty = if (try analyser.resolveTypeOfNodeInternal(.of(container_node, call_handle))) |container_instance|
-        try container_instance.typeOf(analyser)
-    else
-        func_ty.data.function.container_type.*;
+    const container_instance = try analyser.resolveTypeOfNodeInternal(.of(container_node, call_handle)) orelse return false;
+    // Namespace/type access passes every argument explicitly, even when the
+    // function's first parameter accepts anytype or is named `self`.
+    if (container_instance.is_type_val) return false;
+    const container_ty = try container_instance.typeOf(analyser);
 
     std.debug.assert(container_ty.is_type_val);
 

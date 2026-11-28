@@ -179,6 +179,53 @@ test "autofix comment" {
     }, .{ .autofix = true });
 }
 
+test "std bytesToHex accepts input and case" {
+    try testDiagnostics(
+        \\const std = @import("std");
+        \\fn foo() void {
+        \\    _ = std.fmt.bytesToHex([_]u8{1, 2}, .lower);
+        \\}
+    , &.{}, .{});
+}
+
+test "namespace call with anytype input uses all parameters" {
+    try testDiagnostics(
+        \\const fmt = struct {
+        \\    fn bytesToHex(input: anytype, case: enum { lower, upper }) [input.len * 2]u8 {
+        \\        _ = case;
+        \\        return undefined;
+        \\    }
+        \\};
+        \\fn foo() void {
+        \\    _ = fmt.bytesToHex([_]u8{1, 2}, .lower);
+        \\}
+    , &.{}, .{});
+}
+
+test "namespace call with explicit self uses all parameters" {
+    try testDiagnostics(
+        \\const Thing = struct {
+        \\    fn method(self: *Thing, value: u32) void { _ = self; _ = value; }
+        \\};
+        \\fn foo(thing: *Thing) void {
+        \\    Thing.method(thing, 42);
+        \\    thing.method(42);
+        \\}
+    , &.{}, .{});
+}
+
+test "instance call with anytype receiver omits first parameter" {
+    try testDiagnostics(
+        \\const Thing = struct {
+        \\    fn method(self: anytype, value: u32) void { _ = self; _ = value; }
+        \\};
+        \\fn foo(thing: *Thing) void {
+        \\    thing.method(42);
+        \\    Thing.method(thing, 42);
+        \\}
+    , &.{}, .{});
+}
+
 test "function call with an invalid argument count" {
     try testDiagnostics(
         \\const Allocator = struct { pub fn print(self: *Allocator, fmt: []const u8, args: []const u8) void { _ = self; _ = fmt; _ = args; } };
