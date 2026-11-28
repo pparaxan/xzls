@@ -1154,6 +1154,38 @@ fn completeDot(builder: *Builder, loc: offsets.Loc) Analyser.Error!void {
     if (dot_token_index < 2) return;
 
     const nodes = try ast.nodesOverlappingIndexIncludingParseErrors(builder.arena, tree, loc.start);
+    if (tree.tokenTag(dot_token_index - 1) == .l_brace or tree.tokenTag(dot_token_index - 1) == .comma) {
+        for (0..tree.nodes.len) |index| {
+            const node: Ast.Node.Index = @fromBackingInt(@intCast(index));
+            const switch_node = tree.fullSwitch(node) orelse continue;
+            var token = ast.lastToken(tree, switch_node.ast.condition) + 1;
+            if (token >= dot_token_index) continue;
+            var depth: usize = 0;
+            while (token < dot_token_index) : (token += 1) switch (tree.tokenTag(token)) {
+                .l_brace => depth += 1,
+                .r_brace => if (depth > 0) {
+                    depth -= 1;
+                    if (depth == 0) break;
+                } else {
+                    break;
+                },
+                else => {},
+            };
+            if (depth != 1 or token != dot_token_index) continue;
+            const target = try builder.analyser.resolveTypeOfNode(.of(switch_node.ast.condition, builder.orig_handle)) orelse continue;
+            const used = try collectUsedMembersSet(builder, .switch_case, dot_token_index);
+            try collectContainerFields(builder, .switch_case, target, used);
+            return;
+        }
+    }
+    if (tree.tokenTag(dot_token_index - 1) == .equal_angle_bracket_right) {
+        for (nodes, 0..) |node, index| {
+            if (tree.fullSwitch(node) == null) continue;
+            const target = try builder.analyser.resolveExpressionType(builder.orig_handle, node, nodes[index + 1 ..]) orelse break;
+            try collectContainerFields(builder, .enum_assignment, target, .init(builder.arena));
+            return;
+        }
+    }
     const dot_context = getEnumLiteralContext(tree, dot_token_index, nodes) orelse return;
     const used_members_set = try collectUsedMembersSet(builder, dot_context.likely, dot_token_index);
     const containers = try collectContainerNodes(builder, builder.orig_handle, dot_context);

@@ -3701,6 +3701,45 @@ test "either" {
     });
 }
 
+test "incomplete switch target preserves enum completions" {
+    try testCompletion(
+        \\const S = enum { a, b, const c: S = .a; };
+        \\test {
+        \\    const x: S = switch (@as(u8, 42)) {
+        \\        0 => .<cursor>,
+        \\        1 => .b,
+        \\        else => .c,
+        \\    };
+        \\}
+    , &.{
+        .{ .label = "a", .kind = .EnumMember },
+        .{ .label = "b", .kind = .EnumMember },
+        .{ .label = "c", .kind = .EnumMember },
+    });
+}
+
+test "incomplete switch case inside container" {
+    try testCompletion(
+        \\const E = enum {
+        \\    alpha, beta,
+        \\    fn process(value: E) void {
+        \\        switch (value) { .<cursor> }
+        \\    }
+        \\};
+    , &.{
+        .{ .label = "alpha", .kind = .EnumMember },
+        .{ .label = "beta", .kind = .EnumMember },
+    });
+}
+
+test "incomplete initializer before type declaration" {
+    try testCompletion(
+        \\const value: S = .{ .<cursor> };
+        \\fn main() void {}
+        \\const S = struct { alpha: u32 };
+    , &.{.{ .label = "alpha", .kind = .Field, .detail = "u32" }});
+}
+
 test "incomplete fields preserve nested container completions" {
     try testCompletion(
         \\const Outer = struct {

@@ -3186,8 +3186,32 @@ fn parseSwitchProngList(p: *Parse) !Node.SubRange {
     const scratch_top = p.scratch.items.len;
     defer p.scratch.shrinkRetainingCapacity(scratch_top);
 
-    while (true) {
-        const item = try parseSwitchProng(p) orelse break;
+    prongs: while (true) {
+        if (p.recover and p.tokenTag(p.tok_i) == .period and p.tokenTag(p.tok_i + 1) == .r_brace) {
+            try p.warn(.expected_expr);
+            p.tok_i += 1;
+            break;
+        }
+        const item = parseSwitchProng(p) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.ParseError => {
+                if (!p.recover) return error.ParseError;
+                var braces: usize = 0;
+                while (true) : (p.tok_i += 1) switch (p.tokenTag(p.tok_i)) {
+                    .eof => break :prongs,
+                    .l_brace => braces += 1,
+                    .r_brace => {
+                        if (braces == 0) break :prongs;
+                        braces -= 1;
+                    },
+                    .comma => if (braces == 0) {
+                        p.tok_i += 1;
+                        continue :prongs;
+                    },
+                    else => {},
+                };
+            },
+        } orelse break;
 
         try p.scratch.append(p.gpa, item);
 

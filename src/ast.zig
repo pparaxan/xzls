@@ -67,7 +67,7 @@ fn countDeclarations(allocator: std.mem.Allocator, tree: *const Ast) error{OutOf
     var count: usize = 0;
     while (try walker.next(allocator, tree)) |event| switch (event) {
         .open => |node| switch (tree.nodeTag(node)) {
-            .fn_decl, .global_var_decl, .local_var_decl, .simple_var_decl, .aligned_var_decl => count += 1,
+            .fn_decl, .global_var_decl, .local_var_decl, .simple_var_decl, .aligned_var_decl, .@"switch", .switch_comma => count += 1,
             else => {},
         },
         .close => {},
