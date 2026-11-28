@@ -555,22 +555,11 @@ fn parseArgs(
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
-pub fn main(init: std.process.Init.Minimal) !u8 {
-    const is_debug = exe_options.debug_gpa or switch (zig_builtin.mode) {
-        .Debug => true,
-        .ReleaseSafe, .ReleaseFast, .ReleaseSmall => zig_builtin.single_threaded,
-    };
-    const base_allocator = if (is_debug)
-        debug_allocator.allocator()
-    else if (zig_builtin.link_libc)
-        std.heap.c_allocator
-    else if (zig_builtin.target.os.tag == .wasi)
-        std.heap.wasm_allocator
-    else
-        std.heap.smp_allocator;
-    defer if (is_debug) {
-        _ = debug_allocator.deinit();
-    };
+pub fn main(init: std.process.Init) !u8 {
+    const base_allocator = init.gpa;
+    const environ = init.minimal.environ;
+    const args = init.minimal.args;
+    const io = init.io;
 
     var tracy_state = if (tracy.enable_allocation) tracy.Allocator{ .parent_allocator = base_allocator } else {};
     const inner_allocator: std.mem.Allocator = if (tracy.enable_allocation) tracy_state.interface() else base_allocator;
@@ -578,17 +567,10 @@ pub fn main(init: std.process.Init.Minimal) !u8 {
     var failing_allocator_state = if (exe_options.enable_failing_allocator) xzls.testing.FailingAllocator.init(inner_allocator, exe_options.enable_failing_allocator_likelihood) else {};
     const allocator: std.mem.Allocator = if (exe_options.enable_failing_allocator) failing_allocator_state.allocator() else inner_allocator;
 
-    var threaded: std.Io.Threaded = .init(allocator, .{
-        .environ = init.environ,
-        .argv0 = .init(init.args),
-    });
-    defer threaded.deinit();
-    const io = threaded.io();
-
-    var environ_map = try init.environ.createMap(allocator);
+    var environ_map = try environ.createMap(allocator);
     defer environ_map.deinit();
 
-    const result = try parseArgs(io, allocator, &environ_map, init.args);
+    const result = try parseArgs(io, allocator, &environ_map, args);
     defer result.deinit(allocator);
 
     log_file, const log_file_path = try createLogFile(io, allocator, &environ_map, result.log_file_path) orelse .{ null, null };
