@@ -15,6 +15,14 @@ const tracy = @import("tracy");
 
 pub const Error = error{ OutOfMemory, Canceled, InvalidParams };
 
+pub fn declarationReferences(analyser: *Analyser, decl: Analyser.DeclWithHandle, encoding: offsets.Encoding) Analyser.Error!std.ArrayList(types.Location) {
+    return symbolReferences(analyser, .{ .references = .{
+        .textDocument = .{ .uri = decl.handle.uri.raw },
+        .position = offsets.tokenToPosition(&decl.handle.tree, decl.nameToken(), encoding),
+        .context = .{ .includeDeclaration = false },
+    } }, decl, encoding, false, decl.handle);
+}
+
 pub fn @"textDocument/rename"(server: *Server, arena: std.mem.Allocator, request: types.rename.Params) Error!?types.WorkspaceEdit {
     const response = try referencesHandler(server, arena, .{ .rename = request });
     return if (response) |rep| rep.rename else null;

@@ -139,7 +139,7 @@ pub const Builder = struct {
     }
 
     /// Returns `false` if the client explicitly specified that they are not interested in this code action kind.
-    fn wantKind(builder: *Builder, kind: std.meta.Tag(types.CodeAction.Kind)) bool {
+    pub fn wantKind(builder: *Builder, kind: std.meta.Tag(types.CodeAction.Kind)) bool {
         const only_kinds = builder.only_kinds orelse return true;
         return only_kinds.contains(kind);
     }
@@ -174,6 +174,7 @@ pub const Builder = struct {
 
         try generateXzlsCodeActions(builder, range, source_index, ctx);
         try generateExplicitVariableTypeActions(builder, source_index);
+        try @import("refactor.zig").generate(builder, range);
     }
 
     pub fn createTextEditLoc(self: *Builder, loc: offsets.Loc, new_text: []const u8) types.TextEdit {

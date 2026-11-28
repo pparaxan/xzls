@@ -24,6 +24,97 @@ const offsets = zls.offsets;
 
 const allocator: std.mem.Allocator = std.testing.allocator;
 
+test "extract variable preserves explicit initializer type" {
+    try testDiagnostic(
+        \\fn foo(a: u32) u32 {
+        \\    const result: u32 = <>a + 1<>;
+        \\    return result;
+        \\}
+    ,
+        \\fn foo(a: u32) u32 {
+        \\    const extracted: u32 = a + 1;
+        \\    const result: u32 = extracted;
+        \\    return result;
+        \\}
+    , .{ .filter_title = "Extract variable", .filter_kind = .refactor });
+}
+
+test "extract function passes captured scalar operands" {
+    try testDiagnostic(
+        \\fn foo(a: u32, b: u32) u32 {
+        \\    const result = <>a + b<>;
+        \\    return result;
+        \\}
+    ,
+        \\fn foo(a: u32, b: u32) u32 {
+        \\    const result = extractedFunction(a, b);
+        \\    return result;
+        \\}
+        \\
+        \\fn extractedFunction(a: anytype, b: anytype) u32 {
+        \\    return a + b;
+        \\}
+    , .{ .filter_title = "Extract function", .filter_kind = .refactor });
+}
+
+test "inline constant preserves explicit type" {
+    try testDiagnostic(
+        \\fn foo() u32 {
+        \\    const <>value: u32 = 42;
+        \\    return value;
+        \\}
+    ,
+        \\fn foo() u32 {
+        \\    return @as(u32, 42);
+        \\}
+    , .{ .filter_title = "Inline constant", .filter_kind = .refactor });
+}
+
+test "inline constant rejects effectful initializer" {
+    try testDiagnostic(
+        \\fn foo() u32 {
+        \\    const <>value = effect();
+        \\    return value;
+        \\}
+    ,
+        \\fn foo() u32 {
+        \\    const value = effect();
+        \\    return value;
+        \\}
+    , .{ .filter_title = "Inline constant", .filter_kind = .refactor });
+}
+
+test "extract variable avoids existing names" {
+    try testDiagnostic(
+        \\fn foo(a: u32) u32 {
+        \\    const extracted = a;
+        \\    const result = <>a + extracted<>;
+        \\    return result;
+        \\}
+    ,
+        \\fn foo(a: u32) u32 {
+        \\    const extracted = a;
+        \\    const extracted1 = a + extracted;
+        \\    const result = extracted1;
+        \\    return result;
+        \\}
+    , .{ .filter_title = "Extract variable", .filter_kind = .refactor });
+}
+
+test "extract function rejects calls" {
+    try testDiagnostic(
+        \\fn foo() u32 {
+        \\    const result = <>effect()<>;
+        \\    return result;
+        \\}
+    ,
+        \\fn foo() u32 {
+        \\    const result = effect();
+        \\    return result;
+        \\}
+    , .{ .filter_title = "Extract function", .filter_kind = .refactor });
+}
+
 test "discard value" {
     try testAutofix(
         \\test {
@@ -1059,6 +1150,10 @@ fn testDiagnostic(
         1 => blk: {
             const point = offsets.indexToPosition(before, placeholders[0].start, ctx.server.offset_encoding);
             break :blk .{ .start = point, .end = point };
+        },
+        2 => .{
+            .start = offsets.indexToPosition(source, placeholders[0].start, ctx.server.offset_encoding),
+            .end = offsets.indexToPosition(source, placeholders[1].start, ctx.server.offset_encoding),
         },
         else => unreachable,
     };
