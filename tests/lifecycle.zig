@@ -6,6 +6,62 @@ const test_options = @import("test_options");
 const io = std.testing.io;
 const allocator = std.testing.allocator;
 
+test "queued edits analyze the latest document state" {
+    const Context = @import("context.zig").Context;
+    var context = try Context.init();
+    defer context.deinit();
+    const uri = try context.addDocument(.{ .source = "const value = \"\";" });
+    const Transport = struct {
+        transport: zls.lsp.Transport = .{ .vtable = &.{ .readJsonMessage = read, .writeJsonMessage = write } },
+        messages: []const []const u8,
+        index: usize = 0,
+        read_complete: std.Io.Event = .unset,
+        published: std.Io.Event = .unset,
+        publications: std.atomic.Value(usize) = .init(0),
+
+        fn read(transport: *zls.lsp.Transport, task_io: std.Io, alloc: std.mem.Allocator) zls.lsp.Transport.ReadError![]u8 {
+            const self: *@This() = @fieldParentPtr("transport", transport);
+            if (self.index == self.messages.len) {
+                self.read_complete.set(task_io);
+                self.published.waitTimeout(task_io, .{ .duration = .{ .clock = .awake, .raw = .fromSeconds(5) } }) catch return error.EndOfStream;
+                return error.EndOfStream;
+            }
+            const message = self.messages[self.index];
+            self.index += 1;
+            return alloc.dupe(u8, message);
+        }
+
+        fn write(transport: *zls.lsp.Transport, task_io: std.Io, json: []const u8) zls.lsp.Transport.WriteError!void {
+            const self: *@This() = @fieldParentPtr("transport", transport);
+            if (std.mem.indexOf(u8, json, "textDocument/publishDiagnostics") != null) {
+                _ = self.publications.fetchAdd(1, .monotonic);
+                self.published.set(task_io);
+            }
+        }
+
+        fn waitForEdits(self: *@This(), task_io: std.Io) std.Io.Cancelable!void {
+            try self.read_complete.wait(task_io);
+        }
+    };
+    var messages: [3][]const u8 = undefined;
+    for (&messages, 1..) |*message, version| {
+        const source = try std.fmt.allocPrint(context.arena.allocator(), "{d}", .{version});
+        const position = .{ .line = 0, .character = 14 + version };
+        message.* = try std.json.Stringify.valueAlloc(context.arena.allocator(), .{
+            .jsonrpc = "2.0",
+            .method = "textDocument/didChange",
+            .params = .{ .textDocument = .{ .uri = uri.raw, .version = version }, .contentChanges = .{.{ .range = .{ .start = position, .end = position }, .text = source }} },
+        }, .{});
+    }
+    var transport: Transport = .{ .messages = &messages };
+    context.server.setTransport(&transport.transport);
+    context.server.client_capabilities.supports_publish_diagnostics = true;
+    context.server.wait_group.concurrent(io, Transport.waitForEdits, .{ &transport, io }) catch return error.SkipZigTest;
+    try std.testing.expectError(error.EndOfStream, context.server.loop());
+    try std.testing.expectEqualStrings("const value = \"123\";", context.server.document_store.getHandle(uri).?.tree.source);
+    try std.testing.expectEqual(@as(usize, 1), transport.publications.load(.monotonic));
+}
+
 test "LSP lifecycle" {
     var environ_map: std.process.Environ.Map = .init(std.testing.failing_allocator);
     var config_manager: zls.configuration.Manager = try .init(io, allocator, &environ_map);

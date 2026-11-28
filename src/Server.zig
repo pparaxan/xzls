@@ -41,6 +41,7 @@ status: Status = .uninitialized,
 
 // private fields
 wait_group: std.Io.Group = .init,
+defer_diagnostics: bool = false,
 ip: InternPool,
 /// Stores messages that should be displayed with `window/showMessage` once the server has been initialized.
 pending_show_messages: std.ArrayList(types.window.ShowMessageParams) = .empty,
@@ -315,6 +316,7 @@ fn autofix(server: *Server, arena: std.mem.Allocator, handle: *DocumentStore.Han
 }
 
 fn generateDiagnostics(server: *Server, handle: *DocumentStore.Handle) void {
+    if (server.defer_diagnostics) return;
     if (!server.client_capabilities.supports_publish_diagnostics) return;
     const do = struct {
         fn do(param_server: *Server, param_handle: *DocumentStore.Handle) std.Io.Cancelable!void {
@@ -1433,7 +1435,7 @@ pub const LoopError = std.mem.Allocator.Error ||
     error{ EndOfStream, ParseError };
 
 /// The main loop of ZLS
-pub fn loop(server: *Server) LoopError!void {
+fn loopUnbuffered(server: *Server) LoopError!void {
     std.debug.assert(server.transport != null);
     defer server.wait_group.cancel(server.io);
     while (server.keepRunning()) {
@@ -1459,6 +1461,104 @@ pub fn loop(server: *Server) LoopError!void {
             try server.processMessageReportError(arena_allocator.state, message);
         } else {
             server.wait_group.async(server.io, processMessageReportError, .{ server, arena_allocator.state, message });
+        }
+    }
+}
+
+const Incoming = union(enum) {
+    message: struct { arena: std.heap.ArenaAllocator.State, value: Message },
+    failure: LoopError,
+
+    fn deinit(item: Incoming, allocator: std.mem.Allocator) void {
+        if (item == .message) item.message.arena.promote(allocator).deinit();
+    }
+};
+
+fn readIncoming(server: *Server, queue: *std.Io.Queue(Incoming)) std.Io.Cancelable!void {
+    defer queue.close(server.io);
+    while (true) {
+        const json = server.transport.?.readJsonMessage(server.io, server.allocator) catch |err| {
+            queue.putOne(server.io, .{ .failure = err }) catch {};
+            return;
+        };
+        defer server.allocator.free(json);
+        var arena: std.heap.ArenaAllocator = .init(server.allocator);
+        const message = Message.parseFromSliceLeaky(arena.allocator(), json, .{
+            .ignore_unknown_fields = true,
+            .max_value_len = null,
+            .allocate = .alloc_always,
+        }) catch {
+            arena.deinit();
+            queue.putOne(server.io, .{ .failure = error.ParseError }) catch {};
+            return;
+        };
+        queue.putOne(server.io, .{ .message = .{ .arena = arena.state, .value = message } }) catch |err| {
+            arena.deinit();
+            switch (err) {
+                error.Canceled => return error.Canceled,
+                error.Closed => return,
+            }
+        };
+    }
+}
+
+fn changeUri(message: Message) ?[]const u8 {
+    if (message != .notification) return null;
+    if (message.notification.params != .@"textDocument/didChange") return null;
+    return message.notification.params.@"textDocument/didChange".textDocument.uri;
+}
+
+/// Keep receiving edits while analysis runs, then analyze the latest queued
+/// document state. Requests and document boundaries retain their original order.
+pub fn loop(server: *Server) LoopError!void {
+    std.debug.assert(server.transport != null);
+    var storage: [64]Incoming = undefined;
+    var queue: std.Io.Queue(Incoming) = .init(&storage);
+    var reader: std.Io.Group = .init;
+    reader.concurrent(server.io, readIncoming, .{ server, &queue }) catch return server.loopUnbuffered();
+    defer {
+        reader.cancel(server.io);
+        queue.close(server.io);
+        while (queue.getOneUncancelable(server.io)) |item| item.deinit(server.allocator) else |_| {}
+    }
+    defer server.wait_group.cancel(server.io);
+    defer server.defer_diagnostics = false;
+    var pending: ?Incoming = null;
+    defer if (pending) |item| item.deinit(server.allocator);
+    while (server.keepRunning()) {
+        const item = pending orelse queue.getOne(server.io) catch |err| switch (err) {
+            error.Closed => return error.EndOfStream,
+            error.Canceled => return error.Canceled,
+        };
+        pending = null;
+        var transferred = false;
+        defer if (!transferred) item.deinit(server.allocator);
+        if (item == .failure) return item.failure;
+        const incoming = item.message;
+        if (isBlockingMessage(incoming.value)) {
+            defer server.defer_diagnostics = false;
+            try server.wait_group.await(server.io);
+            server.wait_group = .init;
+            if (changeUri(incoming.value)) |uri| {
+                var next: [1]Incoming = undefined;
+                const count = queue.get(server.io, &next, 0) catch |err| switch (err) {
+                    error.Closed => 0,
+                    error.Canceled => return error.Canceled,
+                };
+                if (count == 1) {
+                    pending = next[0];
+                    if (next[0] == .message) {
+                        if (changeUri(next[0].message.value)) |next_uri| {
+                            server.defer_diagnostics = std.mem.eql(u8, uri, next_uri);
+                        }
+                    }
+                }
+            }
+            transferred = true;
+            try server.processMessageReportError(incoming.arena, incoming.value);
+        } else {
+            transferred = true;
+            server.wait_group.async(server.io, processMessageReportError, .{ server, incoming.arena, incoming.value });
         }
     }
 }
