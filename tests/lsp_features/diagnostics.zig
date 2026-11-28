@@ -162,7 +162,7 @@ test "autofix comment" {
             },
             .severity = .Information,
             .source = "xzls",
-            .message = .{ .string = "auto discard for unused variable" },
+            .message = .{ .string = "Unused variable is automatically discarded." },
             .relatedInformation = &.{
                 .{
                     .location = .{
@@ -172,7 +172,7 @@ test "autofix comment" {
                             .end = .{ .line = 1, .character = 13 },
                         },
                     },
-                    .message = "variable declared here",
+                    .message = "The variable was originally declared here.",
                 },
             },
         },

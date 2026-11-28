@@ -413,14 +413,14 @@ test "remove function parameter" {
         \\fn foo(alpha: u32) void {}
     ,
         \\fn foo() void {}
-    , .{ .filter_title = "remove function parameter" });
+    , .{ .filter_title = "Remove unused parameter." });
     try testDiagnostic(
         \\fn foo(
         \\    @"struct": u32,
         \\) void {}
     ,
         \\fn foo() void {}
-    , .{ .filter_title = "remove function parameter" });
+    , .{ .filter_title = "Remove unused parameter." });
 }
 
 test "variable never mutated" {
@@ -434,7 +434,7 @@ test "variable never mutated" {
         \\    const foo = 5;
         \\    _ = foo;
         \\}
-    , .{ .filter_title = "use 'const'" });
+    , .{ .filter_title = "Replace 'var' with 'const'." });
     try testDiagnostic(
         \\test {
         \\    var @"struct" = 5;
@@ -445,7 +445,7 @@ test "variable never mutated" {
         \\    const @"struct" = 5;
         \\    _ = @"struct";
         \\}
-    , .{ .filter_title = "use 'const'" });
+    , .{ .filter_title = "Replace 'var' with 'const'." });
 }
 
 test "discard capture name" {
@@ -459,7 +459,7 @@ test "discard capture name" {
         \\    const maybe: ?u32 = 5;
         \\    if (maybe) |_| {}
         \\}
-    , .{ .filter_title = "discard capture name" });
+    , .{ .filter_title = "Replace unused capture with '_'" });
 }
 
 test "remove capture" {
@@ -474,7 +474,7 @@ test "remove capture" {
         \\    const maybe: ?u32 = 5;
         \\    if (maybe)  {}
         \\}
-    , .{ .filter_title = "remove capture" });
+    , .{ .filter_title = "Remove unused capture." });
 }
 
 test "organize imports" {
